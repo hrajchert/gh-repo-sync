@@ -13,7 +13,6 @@ import Data.Either (Either)
 import Data.Foreign (F, MultipleErrors)
 import Data.Maybe (Maybe(..))
 import Data.MediaType.Common (applicationJSON)
-import Data.Newtype (class Newtype)
 import Data.Newtype (class Newtype, wrap)
 import Data.Tuple (Tuple(..))
 import Network.HTTP.Affjax.Response (class Respondable, ResponseContent, ResponseType(JSONResponse))
@@ -167,5 +166,5 @@ instance respondableMaybeRepository :: Respondable RepositoryParse  where
   fromResponse foreignData = pure $ RepositoryParse (parseForeign foreignData)
     where
         parseForeign :: ResponseContent -> Either MultipleErrors Repository
-        parseForeign foreignData = wrap <$> read foreignData
+        parseForeign foreignD = wrap <$> read foreignD
 
