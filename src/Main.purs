@@ -10,6 +10,7 @@ import Control.Monad.Cont.Trans (runContT)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (CONSOLE, log)
 import Control.Monad.Eff.Exception (Error, message)
+import Data.Maybe (Maybe(..))
 import Data.Either (Either(..))
 import Data.Github.Repository (Repository, RepositoryParse(..))
 import Data.HTTP.Method (Method(..))
@@ -51,6 +52,10 @@ requestCont req = ContT (\cb -> request req cb)
 authHeader :: String -> RequestHeader
 authHeader token = RequestHeader "Authorization" ("Bearer " <> token)
 
+addAccessTokenIfPresent :: Maybe String -> Array RequestHeader  -> Array RequestHeader
+addAccessTokenIfPresent Nothing            headers = headers
+addAccessTokenIfPresent (Just accessToken) headers = headers <> [authHeader accessToken]
+
 getStatusCode :: StatusCode -> Int
 getStatusCode (StatusCode n) = n
 
@@ -74,19 +79,18 @@ siteRepoUrl :: String -> String -> String
 siteRepoUrl owner repo = site $ owner <> "/" <> repo
 
 
-
 getRepo
   :: forall eff
-  .  String -- Access token
+  .  Maybe String -- Access token
   -> String -- Organization name
   -> String -- Repository name
   -> Async (ajax :: AJAX | eff) (Either GetRepoErrors Repository)
-getRepo accessToken org repo =
+getRepo maybeAccessToken org repo =
   -- Request the url and transform both the error and the result
   transformResponse <$> requestCont req
     where
       req = defaultRequest  { url = (apiRepoUrl org repo)
-                            , headers = [authHeader accessToken]
+                            , headers = addAccessTokenIfPresent maybeAccessToken []
                             , method = Left GET
                             }
 
@@ -122,7 +126,7 @@ renderGetRepoErrors InvalidCredentials     = "The access token you provided is i
 
 
 newtype Config = Config
-  { githubToken  :: String
+  { githubToken  :: Maybe String
   , organization :: String
   , repository   :: String
   }
