@@ -1,0 +1,24 @@
+{
+  "name": "gh-repo-sync",
+  "version": "0.0.0-dev",
+  "description": "WIP: Helper tool to sync githubs configuration",
+  "main": "output/Main/index.js",
+  "directories": {
+    "test": "test"
+  },
+  "bin": {
+    "gh-repo-sync": "bin/gh-repo-sync"
+  },
+  "scripts": {
+    "start": "node bin/gh-repo-sync",
+    "start-dev": "pulp -w run",
+    "tdd": "pulp -w test",
+    "build": "pulp build --to bin/gh-repo-sync",
+    "test": "pulp test"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "xhr2": "^0.1.4"
+  }
+}
