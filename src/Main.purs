@@ -10,10 +10,12 @@ import Control.Monad.Cont.Trans (runContT)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (CONSOLE, log)
 import Control.Monad.Eff.Exception (Error, message)
-import Data.Maybe (Maybe(..))
+import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
+import Data.Explain (class Explain, explain)
 import Data.Github.Repository (Repository, RepositoryParse(..))
 import Data.HTTP.Method (Method(..))
+import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Network.HTTP.Affjax (affjax, defaultRequest, AffjaxRequest, AffjaxResponse, AJAX)
 import Network.HTTP.Affjax.Request (class Requestable)
@@ -22,8 +24,6 @@ import Network.HTTP.RequestHeader (RequestHeader(..))
 import Network.HTTP.StatusCode (StatusCode(..))
 import Node.Buffer (BUFFER)
 import Node.FS (FS)
-import Data.Bifunctor (lmap)
-
 
 
 
@@ -103,7 +103,7 @@ getRepo maybeAccessToken org repo =
         n   -> Left (InternalError $ "Unexpected status code " <> show n)
 
       interpretParsedResponse :: RepositoryParse -> Either GetRepoErrors Repository
-      interpretParsedResponse (RepositoryParse (Left err)) = Left (InternalError ("parsing problems: " <> File.explainForeignErrors err))
+      interpretParsedResponse (RepositoryParse (Left err)) = Left (InternalError ("parsing problems: " <> explain err))
       interpretParsedResponse (RepositoryParse (Right r)) = Right r
 
 
@@ -112,19 +112,17 @@ data GetRepoErrors
   | RepoNotFound String
   | InvalidCredentials
 
-renderGetRepoErrors :: GetRepoErrors -> String
-renderGetRepoErrors (InternalError str)    = "There was an internal error: " <> str
-renderGetRepoErrors (RepoNotFound repoUrl) = "The repository (" <> repoUrl <> ") is not found, maybe it's private?"
-renderGetRepoErrors InvalidCredentials     = "The access token you provided is invalid or cancelled"
+instance explainGetRepoErrors :: Explain GetRepoErrors where
+  explain :: GetRepoErrors -> String
+  explain (InternalError str)    = "There was an internal error: " <> str
+  explain (RepoNotFound repoUrl) = "The repository (" <> repoUrl <> ") is not found, maybe it's private?"
+  explain InvalidCredentials     = "The access token you provided is invalid or cancelled"
 
 
 
 ---------------------------
 -- PROGRAM
 ---------------------------
-
-
-
 newtype Config = Config
   { githubToken  :: Maybe String
   , organization :: String
@@ -146,9 +144,11 @@ data ProgramErrors
   = ConfigError File.ReadJsonError
   | GetRepositoryError GetRepoErrors
 
-explainProgramErrors :: ProgramErrors -> String
-explainProgramErrors (ConfigError err) = File.explainReadJsonError err
-explainProgramErrors (GetRepositoryError err) = "Error fetching the repository: " <> renderGetRepoErrors err
+
+instance explainProgramErrors :: Explain ProgramErrors where
+  explain :: ProgramErrors -> String
+  explain (ConfigError err) = "There was an error while reading the configuration file" <> explain err
+  explain (GetRepositoryError err) = "Error fetching the repository: " <> explain err
 
 program :: forall eff. Async (fs :: FS, buffer :: BUFFER, ajax :: AJAX | eff) (Either ProgramErrors Repository)
 program = do
@@ -163,6 +163,6 @@ program = do
 main :: Eff (console :: CONSOLE, buffer :: BUFFER, fs :: FS, ajax :: AJAX) Unit
 main = runContT program resultCb where
   resultCb = (\m -> case m of
-      Left err     -> log $ explainProgramErrors err
+      Left err     -> log $ explain err
       Right result -> log $ "We got the information for: " <> show result
   )

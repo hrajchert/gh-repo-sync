@@ -3,8 +3,6 @@ module Control.File
   , readTextFile
   , parseConfig -- Should not be here
   , ReadJsonError
-  , explainReadJsonError
-  , explainForeignErrors
   )
    where
 
@@ -14,6 +12,7 @@ import Control.Monad.Cont.Trans (ContT(..))
 import Control.Monad.Eff.Exception (Error, message)
 import Data.Bifunctor (lmap)
 import Data.Either (Either)
+import Data.Explain (class Explain, explain)
 import Data.Foldable (foldl)
 import Data.Foreign (ForeignError(TypeMismatch, JSONError, ErrorAtProperty, ErrorAtIndex, ForeignError), renderForeignError)
 import Data.List.Types (NonEmptyList)
@@ -26,7 +25,6 @@ import Node.FS.Async (readFile)
 import Prelude (class Show, bind, pure, show, (#), ($), (<#>), (<>), (<$>))
 import Simple.JSON (class ReadForeign, readJSON)
 import Utils.String (capitalize)
-
 
 
 readFileCont
@@ -66,10 +64,10 @@ instance readJsonErrorShow :: Show ReadJsonError where
   show (ReadFileError path err) = "(ReadFileError file:" <> show path <> ", err: "<> err <> ")"
   show (JsonParseError path err) = "(JsonParseError file: " <> show path <> ", err: " <> show (showForeignErrors err) <> ")"
 
-
-explainReadJsonError :: ReadJsonError -> String
-explainReadJsonError (ReadFileError path err)  = "There was a problem reading the json file " <> show path <> ": " <> err
-explainReadJsonError (JsonParseError path err) = "There was a problem parsing the json file " <> show path <> ":" <> explainForeignErrors err
+instance explainReadJsonError :: Explain ReadJsonError where
+  explain :: ReadJsonError -> String
+  explain (ReadFileError path err)  = "There was a problem reading the json file " <> show path <> ": " <> err
+  explain (JsonParseError path err) = "There was a problem parsing the json file " <> show path <> ":" <> explain err
 
 
 -- TODO: Thinking of putting this into a ForeignHelper
@@ -79,20 +77,6 @@ showForeignErrors errors = foldl showError "" errors where
   showError "" error = renderForeignError error
   showError accu error = accu <> ", " <> renderForeignError error
 
-
-explainForeignErrors :: NonEmptyList ForeignError -> String
-explainForeignErrors errors = foldl renderError "" errors where
-  renderError :: String -> ForeignError -> String
-  renderError accu error = accu <> "\n    * " <> capitalize (explainForeignError error)
-
-
-
-explainForeignError :: ForeignError -> String
-explainForeignError (ForeignError msg) = msg
-explainForeignError (ErrorAtIndex i e) = "at index " <> show i <> ", " <> explainForeignError e
-explainForeignError (ErrorAtProperty prop e) = "on property " <> show prop <> ", " <> explainForeignError e
-explainForeignError (JSONError s) = "there was a json error: " <> s
-explainForeignError (TypeMismatch exp act) = "i was expecting " <> show exp <> ", but got " <> show act
 
 
 -- Probably shouldnt have config stuff here
