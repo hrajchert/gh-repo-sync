@@ -14,7 +14,7 @@ import Data.Bifunctor (lmap)
 import Data.Either (Either)
 import Data.Explain (class Explain, explain)
 import Data.Foldable (foldl)
-import Data.Foreign (ForeignError(TypeMismatch, JSONError, ErrorAtProperty, ErrorAtIndex, ForeignError), renderForeignError)
+import Data.Foreign (ForeignError, renderForeignError)
 import Data.List.Types (NonEmptyList)
 import Data.Newtype (class Newtype, wrap)
 import Data.Traversable (traverse)
@@ -24,7 +24,6 @@ import Node.FS (FS)
 import Node.FS.Async (readFile)
 import Prelude (class Show, bind, pure, show, (#), ($), (<#>), (<>), (<$>))
 import Simple.JSON (class ReadForeign, readJSON)
-import Utils.String (capitalize)
 
 
 readFileCont

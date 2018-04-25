@@ -20,6 +20,7 @@ import Network.HTTP.Affjax.Request (class Requestable)
 import Network.HTTP.Affjax.Response (class Respondable)
 import Network.HTTP.RequestHeader (RequestHeader(..))
 import Network.HTTP.StatusCode (StatusCode(..))
+import Data.Foreign (MultipleErrors)
 
 ---------------------------
 -- REQUEST
@@ -97,19 +98,21 @@ getRepo maybeAccessToken org repo =
         n   -> Left (InternalError $ "Unexpected status code " <> show n)
 
       interpretParsedResponse :: RepositoryParse -> Either GetRepoErrors Repository
-      interpretParsedResponse (RepositoryParse (Left err)) = Left (InternalError ("parsing problems: " <> explain err))
+      interpretParsedResponse (RepositoryParse (Left err)) = Left (InvalidResponse err)
       interpretParsedResponse (RepositoryParse (Right r)) = Right r
 
 
 data GetRepoErrors
   = InternalError String
   | RepoNotFound String
+  | InvalidResponse MultipleErrors
   | InvalidCredentials
 
 instance explainGetRepoErrors :: Explain GetRepoErrors where
   explain :: GetRepoErrors -> String
   explain (InternalError str)    = "There was an internal error: " <> str
   explain (RepoNotFound repoUrl) = "The repository (" <> repoUrl <> ") is not found, maybe it's private?"
+  explain (InvalidResponse err)  = "Github response doesn't match what we expected: " <> explain err
   explain InvalidCredentials     = "The access token you provided is invalid or cancelled"
 
 
