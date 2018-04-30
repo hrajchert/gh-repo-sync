@@ -22,7 +22,7 @@ import Data.JSON.ParseForeign (read, read')
 
 type Owner =
   { login               :: String
-  , id                  :: Number
+  , id                  :: Int
   , avatar_url          :: String
   , gravatar_id         :: String
   , url                 :: String
@@ -55,7 +55,7 @@ type RepositoryLicense =
 
 type Organization =
   { login               :: String
-  , id                  :: Number
+  , id                  :: Int
   , avatar_url          :: String
   , gravatar_id         :: String
   , url                 :: String
@@ -74,7 +74,7 @@ type Organization =
   }
 
 newtype Repository = Repository
-  { id                  :: Number
+  { id                  :: Int
   , name                :: String
   , full_name           :: String
   , owner               :: Owner
@@ -127,38 +127,38 @@ newtype Repository = Repository
   , clone_url           :: String
   , svn_url             :: String
   , homepage            :: Maybe String
-  , size                :: Number
-  , stargazers_count    :: Number
-  , watchers_count      :: Number
+  , size                :: Int
+  , stargazers_count    :: Int
+  , watchers_count      :: Int
   , language            :: String
   , has_issues          :: Boolean
   , has_projects        :: Boolean
   , has_downloads       :: Boolean
   , has_wiki            :: Boolean
   , has_pages           :: Boolean
-  , forks_count         :: Number
+  , forks_count         :: Int
   , mirror_url          :: Maybe String
   , archived            :: Boolean
-  , open_issues_count   :: Number
+  , open_issues_count   :: Int
   , license             :: Maybe RepositoryLicense
-  , forks               :: Number
-  , open_issues         :: Number
-  , watchers            :: Number
+  , forks               :: Int
+  , open_issues         :: Int
+  , watchers            :: Int
   , default_branch      :: String
   , permissions         :: Maybe RepositoryPermissions
   , allow_squash_merge  :: Maybe Boolean
   , allow_merge_commit  :: Maybe Boolean
   , allow_rebase_merge  :: Maybe Boolean
   , organization        :: Maybe Organization
-  , network_count       :: Number
-  , subscribers_count   :: Number
+  , network_count       :: Int
+  , subscribers_count   :: Int
   }
 
 derive instance newtypeRepository :: Newtype Repository _
 -- derive instance readForeignRepository :: ReadForeign Repository _
 
 instance showRepository :: Show Repository  where
-  show (Repository c) = "(Repository " <> c.full_name  <> ")"
+  show (Repository c) = "(Repository " <> c.full_name <> ")"
 
 instance respondableRepository :: Respondable Repository where
   responseType = Tuple (Just applicationJSON) JSONResponse
