@@ -1,6 +1,6 @@
 {
   "name": "gh-repo-sync",
-  "version": "0.0.1-dev",
+  "version": "0.0.2-dev",
   "description": "WIP: Helper tool to sync githubs configuration",
   "main": "output/Main/index.js",
   "directories": {
