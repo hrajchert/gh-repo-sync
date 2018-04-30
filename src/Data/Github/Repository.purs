@@ -16,7 +16,8 @@ import Data.MediaType.Common (applicationJSON)
 import Data.Newtype (class Newtype, wrap)
 import Data.Tuple (Tuple(..))
 import Network.HTTP.Affjax.Response (class Respondable, ResponseContent, ResponseType(JSONResponse))
-import Simple.JSON (read, read')
+-- import Simple.JSON (read, read')
+import Data.JSON.ParseForeign (read, read')
 
 
 type Owner =
@@ -43,6 +44,13 @@ type RepositoryPermissions =
   { admin  :: Boolean
   , push   :: Boolean
   , pull   :: Boolean
+  }
+
+type RepositoryLicense =
+  { key     :: String
+  , name    :: String
+  , spdx_id :: String
+  , url     :: String
   }
 
 type Organization =
@@ -118,7 +126,7 @@ newtype Repository = Repository
   , ssh_url             :: String
   , clone_url           :: String
   , svn_url             :: String
-  , homepage            :: String
+  , homepage            :: Maybe String
   , size                :: Number
   , stargazers_count    :: Number
   , watchers_count      :: Number
@@ -132,19 +140,18 @@ newtype Repository = Repository
   , mirror_url          :: Maybe String
   , archived            :: Boolean
   , open_issues_count   :: Number
-  , license             :: Maybe String
+  , license             :: Maybe RepositoryLicense
   , forks               :: Number
   , open_issues         :: Number
   , watchers            :: Number
   , default_branch      :: String
-  , permissions         :: RepositoryPermissions
-  , allow_squash_merge  :: Boolean
-  , allow_merge_commit  :: Boolean
-  , allow_rebase_merge  :: Boolean
-  , organization        :: Organization
+  , permissions         :: Maybe RepositoryPermissions
+  , allow_squash_merge  :: Maybe Boolean
+  , allow_merge_commit  :: Maybe Boolean
+  , allow_rebase_merge  :: Maybe Boolean
+  , organization        :: Maybe Organization
   , network_count       :: Number
   , subscribers_count   :: Number
-
   }
 
 derive instance newtypeRepository :: Newtype Repository _

@@ -23,7 +23,8 @@ import Node.Encoding (Encoding(..))
 import Node.FS (FS)
 import Node.FS.Async (readFile)
 import Prelude (class Show, bind, pure, show, (#), ($), (<#>), (<>), (<$>))
-import Simple.JSON (class ReadForeign, readJSON)
+-- import Simple.JSON (class ReadForeign, readJSON)
+import Data.JSON.ParseForeign (class ParseForeign, readJSON)
 
 
 readFileCont
@@ -49,7 +50,7 @@ readTextFile path = do
   )
 
 -- TODO: Shouldn't have config stuff in a File utils
-parseConfig :: forall c a. ReadForeign a => Newtype c a => String -> Either (NonEmptyList ForeignError) c
+parseConfig :: forall c a. ParseForeign a => Newtype c a => String -> Either (NonEmptyList ForeignError) c
 parseConfig str = wrap <$> maybeObj where
   maybeObj :: Either (NonEmptyList ForeignError) a
   maybeObj = readJSON str
@@ -86,7 +87,7 @@ mapJsonParseError path errors = JsonParseError path errors
 
 readJsonFile
   :: forall eff t a
-  .  ReadForeign a => Newtype t a
+  .  ParseForeign a => Newtype t a
   => String
   -> Async (fs :: FS, buffer :: BUFFER | eff) (Either ReadJsonError t)
 readJsonFile path = do
