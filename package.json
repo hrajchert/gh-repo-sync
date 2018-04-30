@@ -13,7 +13,7 @@
     "start": "node bin/gh-repo-sync",
     "start-dev": "pulp -w run",
     "tdd": "pulp -w test",
-    "build": "pulp build --to bin/gh-repo-sync",
+    "build": "pulp build",
     "test": "pulp test"
   },
   "author": "",

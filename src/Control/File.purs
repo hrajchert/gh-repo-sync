@@ -48,7 +48,7 @@ readTextFile path = do
                 cb maybeText
   )
 
-
+-- TODO: Shouldn't have config stuff in a File utils
 parseConfig :: forall c a. ReadForeign a => Newtype c a => String -> Either (NonEmptyList ForeignError) c
 parseConfig str = wrap <$> maybeObj where
   maybeObj :: Either (NonEmptyList ForeignError) a
@@ -78,8 +78,6 @@ showForeignErrors errors = foldl showError "" errors where
 
 
 
--- Probably shouldnt have config stuff here
---
 mapReadFileError :: String -> Error -> ReadJsonError
 mapReadFileError path err = ReadFileError path (message err)
 
