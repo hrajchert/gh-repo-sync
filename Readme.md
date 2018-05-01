@@ -3,23 +3,33 @@ This will be a tool to sync the configuration between multiple githubs repositor
 
 For now this is a project to help me learn PureScript, it's far away for being feature complete.
 
+# To Use it
+You can execute the binary (without installing it) direct from npm using
+
+    $ npx gh-repo-sync
+
+Or if you want you can install it globally
+
+    $ npm install -g gh-repo-sync
+
+
 # To Develop
 Clone the repository
 
-    git clone git@github.com:hrajchert/gh-repo-sync.git
+    $ git clone git@github.com:hrajchert/gh-repo-sync.git
 
 and install dependencies
 
-    bower install
-    npm install
+    $ bower install
+    $ npm install
 
 make sure to have [purescript installed](https://github.com/purescript/documentation/blob/master/guides/Getting-Started.md). If you want to create the binary file execute
 
-    npm run build
+    $ npm run build
 
 To run it
 
-    npm run start
+    $ npm run start
 
 
 
