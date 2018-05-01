@@ -15,12 +15,11 @@ class Explain a where
   explain :: a -> String
 
 
--- TODO: Make this generic for any a that is Explainable
-instance explainReadJsonError :: Explain (NonEmptyList ForeignError) where
-  explain :: NonEmptyList ForeignError -> String
-  explain errors = foldl renderError "" errors where
-    renderError :: String -> ForeignError -> String
-    renderError accu error = accu <> "\n    * " <> capitalize (explain error)
+instance explainNonEmptyList :: Explain a => Explain (NonEmptyList a) where
+  explain :: NonEmptyList a -> String
+  explain list = foldl explainItem "" list where
+    explainItem :: String -> a -> String
+    explainItem accu a = accu <> "\n    * " <> capitalize (explain a)
 
 instance explainForeignError :: Explain ForeignError where
   explain :: ForeignError -> String
