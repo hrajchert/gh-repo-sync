@@ -30,11 +30,13 @@ const validateConfig = (config) => {
     return config;
 }
 
+const showRepo = repo => `(Repository ${repo.full_name})`
+
 function main () {
     readJSON('./config.json')
         .then(validateConfig)
         .then(config => getRepo(config.organization, config.repository, config.githubToken))
-        .then(req => console.log(`Yeay = ${req.id}`))
+        .then(req => console.log(`Yeay = ${showRepo(req)}`))
         .catch(err => console.error('Err: ', '' + err))
 }
 
