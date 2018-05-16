@@ -36,8 +36,8 @@ function main () {
     readJSON('./config.json')
         .then(validateConfig)
         .then(config => getRepo(config.organization, config.repository, config.githubToken))
-        .then(req => console.log(`Yeay = ${showRepo(req)}`))
-        .catch(err => console.error('Err: ', '' + err))
+        .then(res => console.log(`Yeay: ${showRepo(res)}`))
+        .catch(err => console.error(`Buu: ${'' + err}`))
 }
 
 main();

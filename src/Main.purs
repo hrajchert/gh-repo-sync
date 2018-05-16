@@ -61,6 +61,6 @@ program = do
 main :: Eff (console :: CONSOLE, buffer :: BUFFER, fs :: FS, ajax :: AJAX) Unit
 main = runContT program resultCb where
   resultCb = (\m -> case m of
-      Left err     -> log $ explain err
-      Right result -> log $ "We got the information for: " <> show result
+      Left err     -> log $ "Buu: " <> explain err
+      Right result -> log $ "Yeay: " <> show result
   )
