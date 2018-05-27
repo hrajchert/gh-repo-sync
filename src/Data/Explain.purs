@@ -8,7 +8,7 @@ import Data.Explain (class Explain, explain)
 import Data.Foldable (foldl)
 import Data.Foreign (ForeignError(TypeMismatch, JSONError, ErrorAtProperty, ErrorAtIndex, ForeignError))
 import Data.List.Types (NonEmptyList)
-import Prelude (show, (<>), (==))
+import Prelude (show, (<>))
 import Utils.String (capitalize)
 
 class Explain a where
