@@ -4,6 +4,7 @@ import Prelude
 
 import Control.Async (Async)
 import Control.File as File
+import Control.Github.Api (GetRepoErrors, getRepo)
 import Control.Monad.Cont.Trans (runContT)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (CONSOLE, log)
@@ -16,7 +17,6 @@ import Data.Newtype (class Newtype)
 import Network.HTTP.Affjax (AJAX)
 import Node.Buffer (BUFFER)
 import Node.FS (FS)
-import Control.Github.Api (GetRepoErrors, getRepo)
 
 ---------------------------
 -- PROGRAM
@@ -48,15 +48,29 @@ instance explainProgramErrors :: Explain ProgramErrors where
   explain (ConfigError err) = "There was an error while reading the configuration file: " <> explain err
   explain (GetRepositoryError err) = "Error fetching the repository: " <> explain err
 
+ifItWorked :: forall a b e eff
+  .  Either e a 
+  -> (a -> Async eff (Either e b)) 
+  -> Async eff (Either e b)
+ifItWorked maybeA f = 
+  case maybeA of
+    Left err -> pure $ Left err
+    Right c  -> f c
+
+withError :: forall eff e e' a 
+  .  Async eff (Either e a) 
+  -> (e -> e') 
+  -> Async eff (Either e' a)
+withError a fe = lmap fe <$> a 
+
 program :: forall eff. Async (fs :: FS, buffer :: BUFFER, ajax :: AJAX | eff) (Either ProgramErrors Repository)
 program = do
   -- maybeConfig :: Either ProgramErrors Config
-  maybeConfig <- lmap ConfigError <$> readConfig "./config.json"
-  -- getRepo t o r :: Async (ajax :: AJAX | eff) (Either GetRepoErrors Repository)
-  case maybeConfig of
-    Left err -> pure $ Left err
-    Right (Config config) -> lmap GetRepositoryError <$> getRepo config.githubToken config.organization config.repository
-
+  maybeConfig <- readConfig "./config.json" `withError` ConfigError 
+  ifItWorked maybeConfig (\
+    (Config config) -> getRepo config.githubToken config.organization config.repository `withError` GetRepositoryError 
+  )
+    
 
 main :: Eff (console :: CONSOLE, buffer :: BUFFER, fs :: FS, ajax :: AJAX) Unit
 main = runContT program resultCb where
