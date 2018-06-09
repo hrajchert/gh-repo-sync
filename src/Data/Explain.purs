@@ -5,7 +5,7 @@ module Data.Explain
 
 
 import Data.Explain (class Explain, explain)
-import Data.Foldable (foldl)
+import Data.Foldable (foldl, class Foldable)
 import Data.Foreign (ForeignError(TypeMismatch, JSONError, ErrorAtProperty, ErrorAtIndex, ForeignError))
 import Data.List.Types (NonEmptyList)
 import Prelude (show, (<>))
@@ -18,8 +18,8 @@ class Explain a where
 instance explainString :: Explain String where
   explain str = str
 
-instance explainNonEmptyList :: Explain a => Explain (NonEmptyList a) where
-  explain :: NonEmptyList a -> String
+instance explainFoldable :: (Foldable f, Explain a) => Explain (f a) where
+  explain :: forall f a. Foldable f => Explain a => f a -> String
   explain list = foldl explainItem "" list where
     explainItem :: String -> a -> String
     explainItem accu a = accu <> "\n    * " <> capitalize (explain a)
