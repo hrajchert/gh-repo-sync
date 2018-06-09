@@ -1,5 +1,6 @@
 module Utils.ReplHelpers
   ( try
+  , try'
   )
 where
 
@@ -19,4 +20,14 @@ try program = runContT program resultCb where
   resultCb = (\m -> case m of
       Left err     -> log $ "Fail: " <> explain err
       Right result -> log $ "Ok: "   <> show result
+  )
+
+try'
+  :: forall eff err ok. Explain err
+  => Async (console :: CONSOLE | eff) (Either err String)
+  -> Eff (console :: CONSOLE | eff) Unit
+try' program = runContT program resultCb where
+  resultCb = (\m -> case m of
+      Left err     -> log $ "Fail: " <> explain err
+      Right result -> log $ "Ok: "   <> result
   )

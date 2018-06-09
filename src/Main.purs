@@ -16,11 +16,14 @@ import Data.Newtype (class Newtype)
 import Network.HTTP.Affjax (AJAX)
 import Node.Buffer (BUFFER)
 import Node.FS (FS)
+import Control.Github.Api (GetRepoErrors, getRepo)
+import Data.Github.Settings.BranchProtection (BranchProtectionSettings)
 
 newtype Config = Config
   { githubToken  :: Maybe String
   , organization :: String
   , repository   :: String
+  , branchProtection :: BranchProtectionSettings
   }
 
 derive instance newtypeConfig :: Newtype Config _
@@ -46,11 +49,11 @@ instance explainProgramErrors :: Explain ProgramErrors where
 program :: forall eff. Async (fs :: FS, buffer :: BUFFER, ajax :: AJAX | eff) (Either ProgramErrors Repository)
 program = do
   -- maybeConfig :: Either ProgramErrors Config
-  maybeConfig <- readConfig "./config.json" `withError` ConfigError 
+  maybeConfig <- readConfig "./config.json" `withError` ConfigError
   ifItWorked maybeConfig (\
-    (Config config) -> getRepo config.githubToken config.organization config.repository `withError` GetRepositoryError 
+    (Config config) -> getRepo config.githubToken config.organization config.repository `withError` GetRepositoryError
   )
-    
+
 
 main :: Eff (console :: CONSOLE, buffer :: BUFFER, fs :: FS, ajax :: AJAX) Unit
 main = runContT program resultCb where
@@ -58,3 +61,10 @@ main = runContT program resultCb where
       Left err     -> log $ "Buu: " <> explain err
       Right result -> log $ "Yeay: " <> show result
   )
+
+-- Testing
+readBrachProtectionSettings :: forall eff. Async (fs :: FS, buffer :: BUFFER | eff) (Either ProgramErrors String)
+readBrachProtectionSettings = do
+  -- maybeConfig :: Either ProgramErrors Config
+  maybeConfig <- readConfig "./config.json" `withError` ConfigError
+  pure $ (\(Config config) -> explain config.branchProtection) <$> maybeConfig
