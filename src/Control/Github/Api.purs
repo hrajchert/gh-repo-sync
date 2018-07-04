@@ -115,4 +115,9 @@ instance explainGetRepoErrors :: Explain GetRepoErrors where
   explain (InvalidResponse err)  = "Github response doesn't match what we expected: " <> explain err
   explain InvalidCredentials     = "The access token you provided is invalid or cancelled"
 
+instance showGetRepoErrors :: Show GetRepoErrors  where
+  show (InternalError e) = "(InternalError " <> e <> ")"
+  show (RepoNotFound e) = "(RepoNotFound " <> e <> ")"
+  show (InvalidResponse e) = "(InvalidResponse " <> show e <> ")"
+  show InvalidCredentials = "InvalidCredentials"
 

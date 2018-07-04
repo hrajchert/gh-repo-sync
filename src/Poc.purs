@@ -25,6 +25,7 @@ newtype Config = Config
 
 derive instance newtypeConfig :: Newtype Config _
 
+
 instance showConfig :: Show Config  where
   show (Config c) = "{ githubToken: " <> (show (c.githubToken)) <> " }"
 
@@ -36,6 +37,9 @@ data ProgramErrors
   = ConfigError File.ReadJsonError
   | GetRepositoryError GetRepoErrors
 
+instance showProgramErrors :: Show ProgramErrors  where
+  show (ConfigError config) = "(ConfigError " <> show config <> ")"
+  show (GetRepositoryError error) = "(GetRepositoryError " <> show error <> ")"
 
 instance explainProgramErrors :: Explain ProgramErrors where
   explain :: ProgramErrors -> String
