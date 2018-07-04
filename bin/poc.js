@@ -33,7 +33,7 @@ const validateConfig = (config) => {
 const showRepo = repo => `(Repository ${repo.full_name})`
 
 function main () {
-    readJSON('./config.json')
+    readJSON('./poc-config.json')
         .then(validateConfig)
         .then(config => getRepo(config.organization, config.repository, config.githubToken))
         .then(res => console.log(`Yeay: ${showRepo(res)}`))
