@@ -1,7 +1,10 @@
 module Control.Github.Api
-  ( getRepo
-  , GetRepoErrors(..)
-  )
+  -- ( getRepo
+  -- , GetRepoErrors(..)
+  -- , getBranchProtection
+  -- , GetBranchProtectionErrors(..)
+  -- , getBranchProtectionSettings -- TODO: Move to a Settings
+  -- )
    where
 
 import Prelude
@@ -13,6 +16,7 @@ import Control.Monad.Eff.Exception (Error, message)
 import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
 import Data.Github.Repository (Repository, RepositoryParse(..))
+import Data.Github.Api.BranchProtection (BranchProtectionParse(..), BranchProtectionBodyParse(..), ApiError(..), BranchProtection(..), RequiredPullRequestReviews, RequiredStatusCheck)
 import Data.HTTP.Method (Method(..))
 import Data.Maybe (Maybe(..))
 import Network.HTTP.Affjax (affjax, defaultRequest, AffjaxRequest, AffjaxResponse, AJAX)
@@ -21,6 +25,7 @@ import Network.HTTP.Affjax.Response (class Respondable)
 import Network.HTTP.RequestHeader (RequestHeader(..))
 import Network.HTTP.StatusCode (StatusCode(..))
 import Data.Foreign (MultipleErrors)
+import Data.Github.Settings.BranchProtection (BranchProtectionSettings(..), PullRequestReviewSettings, StatusChecksSettings)
 
 ---------------------------
 -- REQUEST
@@ -47,6 +52,10 @@ requestCont req = ContT (\cb -> request req cb)
 authHeader :: String -> RequestHeader
 authHeader token = RequestHeader "Authorization" ("Bearer " <> token)
 
+acceptHeader :: String -> RequestHeader
+acceptHeader negotiation = RequestHeader "Accept" negotiation
+
+
 addAccessTokenIfPresent :: Maybe String -> Array RequestHeader  -> Array RequestHeader
 addAccessTokenIfPresent Nothing            headers = headers
 addAccessTokenIfPresent (Just accessToken) headers = headers <> [authHeader accessToken]
@@ -57,28 +66,26 @@ getStatusCode (StatusCode n) = n
 ---------------------------
 -- API
 ---------------------------
-
 api :: String -> String
 api url = "https://api.github.com/" <> url
 
 site :: String -> String
 site url = "https://www.github.com/" <> url
 
-orgRepos :: String -> String
-orgRepos org = api $ "orgs/" <> org <> "/repos"
+-- TODO: Try to add conditional request
+-- https://developer.github.com/v3/#conditional-requests
 
-apiRepoUrl :: String -> String -> String
-apiRepoUrl owner repo = api $ "repos/" <> owner <> "/" <> repo
 
-siteRepoUrl :: String -> String -> String
-siteRepoUrl owner repo = site $ owner <> "/" <> repo
-
+---------------------------
+-- get Repository
+---------------------------
+-- Githubs documentation https://developer.github.com/v3/repos/#get
 
 getRepo
   :: forall eff
   .  Maybe String -- Access token
-  -> String -- Organization name
-  -> String -- Repository name
+  -> String       -- Organization name
+  -> String       -- Repository name
   -> Async (ajax :: AJAX | eff) (Either GetRepoErrors Repository)
 getRepo maybeAccessToken org repo =
   -- Request the url and transform both the error and the result
@@ -101,6 +108,11 @@ getRepo maybeAccessToken org repo =
       interpretParsedResponse (RepositoryParse (Left err)) = Left (InvalidResponse err)
       interpretParsedResponse (RepositoryParse (Right r)) = Right r
 
+      apiRepoUrl :: String -> String -> String
+      apiRepoUrl owner repo' = api $ "repos/" <> owner <> "/" <> repo'
+
+      siteRepoUrl :: String -> String -> String
+      siteRepoUrl owner repo' = site $ owner <> "/" <> repo'
 
 data GetRepoErrors
   = InternalError String
@@ -120,4 +132,132 @@ instance showGetRepoErrors :: Show GetRepoErrors  where
   show (RepoNotFound e) = "(RepoNotFound " <> e <> ")"
   show (InvalidResponse e) = "(InvalidResponse " <> show e <> ")"
   show InvalidCredentials = "InvalidCredentials"
+
+getBranchProtectionSettings
+  :: forall eff
+  .  String -- Access token
+  -> String -- Organization name
+  -> String -- Repository name
+  -> String -- Branch name
+  -> Async (ajax :: AJAX | eff) (Either GetBranchProtectionErrors BranchProtectionSettings)
+getBranchProtectionSettings accessToken org repo branch =
+  -- Make the API call and interpret the response
+  interpretResponse <$> getBranchProtection accessToken org repo branch
+    where
+      interpretResponse :: Either GetBranchProtectionErrors BranchProtection -> Either GetBranchProtectionErrors BranchProtectionSettings
+      interpretResponse (Left GetBranchNotProtected) = pure BranchNotProtected
+      interpretResponse (Left error) = Left error
+      interpretResponse (Right (BranchProtection
+                                  { required_pull_request_reviews: maybePR
+                                  , required_status_checks: maybeSC
+                                  , required_signatures
+                                  , enforce_admins
+                                  }
+                                )
+                        ) = pure $ ProtectedBranch
+                                    { pullRequestReview    : interpretPullRequestReview maybePR
+                                    , statusChecks         : interpretStatusCheck maybeSC
+                                    , requireSignedCommits : required_signatures.enabled
+                                    , includeAdministrators: enforce_admins.enabled
+                                    }
+
+
+      interpretPullRequestReview :: Maybe RequiredPullRequestReviews -> Maybe PullRequestReviewSettings
+      interpretPullRequestReview Nothing = Nothing
+      interpretPullRequestReview
+          (Just
+            { required_approving_review_count: requiredApprovingReviews
+            , dismiss_stale_reviews: dismissStale
+            , require_code_owner_reviews: requireReviewFromOwner
+            }
+          ) = Just
+                { requiredApprovingReviews
+                , dismissStale
+                , requireReviewFromOwner
+                }
+
+      interpretStatusCheck :: Maybe RequiredStatusCheck -> Maybe StatusChecksSettings
+      interpretStatusCheck Nothing = Nothing
+      interpretStatusCheck
+        (Just
+          { strict: requireUpToDate
+          , contexts: checks
+          }
+        ) = Just
+              { requireUpToDate
+              , checks
+              }
+
+
+---------------------------
+-- get Branch protection
+---------------------------
+-- Githubs documentation: https://developer.github.com/v3/repos/branches/#get-branch-protection
+
+
+getBranchProtection
+  :: forall eff
+  .  String -- Access token
+  -> String -- Organization name
+  -> String -- Repository name
+  -> String -- Branch name
+  -> Async (ajax :: AJAX | eff) (Either GetBranchProtectionErrors BranchProtection)
+getBranchProtection accessToken org repo branch =
+  -- Request the url and transform both the error and the result
+  transformResponse <$> requestCont req
+    where
+      req = defaultRequest  { url = (endpointUrl org repo branch)
+                            , headers =
+                              [ authHeader accessToken
+                              -- This header is here to get required_approving_review_count info
+                              -- as stated in a warning here: https://developer.github.com/v3/repos/branches/#get-branch-protection
+                              , acceptHeader "application/vnd.github.luke-cage-preview+json"
+                              -- This header is here to get required_signatures info
+                              -- as stated here: https://developer.github.com/v3/repos/branches/#get-required-signatures-of-protected-branch
+                              , acceptHeader "application/vnd.github.zzzax-preview+json"
+                              ]
+                            , method = Left GET
+                            }
+
+      transformResponse :: Either Error (AffjaxResponse BranchProtectionParse) -> Either GetBranchProtectionErrors BranchProtection
+      transformResponse (Left err)  = Left (InternalError' $ message err)
+      transformResponse (Right val) = case getStatusCode val.status of
+        200 -> interpretParsedResponse val.response
+        401 -> Left InvalidCredentials'
+        404 -> interpret404Response val.response
+        n   -> Left (InternalError' $ "Unexpected status code " <> show n)
+
+      interpretParsedResponse :: BranchProtectionParse -> Either GetBranchProtectionErrors BranchProtection
+      interpretParsedResponse (BranchProtectionParse (Left err)) = Left (InvalidResponse' err)
+      interpretParsedResponse (BranchProtectionParse (Right (Error r))) = Left (InternalError' "invalid response") -- TODO: change to invalidResponse
+      interpretParsedResponse (BranchProtectionParse (Right (Branch r))) = Right r
+
+      interpret404Response :: BranchProtectionParse -> Either GetBranchProtectionErrors BranchProtection
+      -- TODO: right now this error is here to allow it to compile, but it should check wheter the message is
+      -- "Branch not protected" or "Branch not found"
+      interpret404Response (BranchProtectionParse (Left err)) = Left (InvalidResponse' err)
+      interpret404Response (BranchProtectionParse (Right (Branch r))) = Left (InternalError' "shoudnt parse a response if 404")  -- TODO: change to invalidResponse
+      interpret404Response (BranchProtectionParse (Right (Error (ApiError r)))) = case r.message of
+          "Branch not protected" -> Left GetBranchNotProtected
+          "Branch not found" -> Left (BranchNotFound org repo branch)
+          _ -> Left (InternalError' "invalid response")
+
+      endpointUrl :: String -> String -> String -> String
+      endpointUrl owner repo' branch' = api $ "repos/" <> owner <> "/" <> repo' <> "/branches/" <> branch' <> "/protection"
+
+
+data GetBranchProtectionErrors
+  = InternalError' String
+  | BranchNotFound String String String
+  | GetBranchNotProtected
+  | InvalidResponse' MultipleErrors
+  | InvalidCredentials'
+
+instance explainGetBranchProtectionErrors :: Explain GetBranchProtectionErrors where
+  explain :: GetBranchProtectionErrors -> String
+  explain (InternalError' str)    = "There was an internal error: " <> str
+  explain (BranchNotFound owner repo branch) = "The branch @" <> owner <> "/" <> repo <> "#" <> branch <> " is not found"
+  explain (GetBranchNotProtected) = "The branch is not protected"
+  explain (InvalidResponse' err)  = "Github response doesn't match what we expected: " <> explain err
+  explain InvalidCredentials'     = "The access token you provided is invalid or cancelled"
 

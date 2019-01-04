@@ -1,5 +1,8 @@
 module Data.Github.Settings.BranchProtection
-  ( BranchProtectionSettings
+  ( BranchProtectionSettings(..)
+  , ProtectedBranchSettings
+  , PullRequestReviewSettings
+  , StatusChecksSettings
   )
 where
 

@@ -16,7 +16,6 @@ import Data.Newtype (class Newtype)
 import Network.HTTP.Affjax (AJAX)
 import Node.Buffer (BUFFER)
 import Node.FS (FS)
-import Control.Github.Api (GetRepoErrors, getRepo)
 import Data.Github.Settings.BranchProtection (BranchProtectionSettings)
 
 newtype Config = Config
