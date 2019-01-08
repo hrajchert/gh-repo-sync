@@ -4,7 +4,7 @@ import Prelude
 
 import Control.Monad.Except (runExcept)
 import Data.Either (Either(..))
-import Data.Foreign (F, ForeignError(..))
+import Foreign (F, ForeignError(..))
 import Data.List.NonEmpty (NonEmptyList, singleton, fromFoldable)
 import Data.Maybe (Maybe(..))
 import Data.JSON.ParseForeign (class ParseForeign, readJSON')
@@ -47,7 +47,7 @@ instance eqRecordABC :: Eq RecordABC where
 
 
 
-parseForeignSpec :: forall eff. Spec eff Unit
+parseForeignSpec :: Spec Unit
 parseForeignSpec =
     describe "class ParseForeign" do
       -----------------

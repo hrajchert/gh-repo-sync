@@ -8,7 +8,7 @@ where
 
 import Prelude
 import Data.JSON.ParseForeign (class ParseForeign, parseForeign)
-import Data.Foreign (F, Foreign)
+import Foreign (F, Foreign)
 import Data.Maybe (Maybe(..))
 import Data.Explain (class Explain, explain)
 

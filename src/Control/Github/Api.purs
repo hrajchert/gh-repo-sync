@@ -9,44 +9,59 @@ module Control.Github.Api
 
 import Prelude
 import Control.Async (Async)
-import Control.Monad.Aff (Aff, runAff)
+import Effect.Aff (runAff)
 import Control.Monad.Cont (ContT(ContT))
-import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Exception (Error, message)
+import Effect (Effect)
+import Effect.Exception (Error, message, error)
 import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
-import Data.Github.Repository (Repository, RepositoryParse(..))
-import Data.Github.Api.BranchProtection (BranchProtectionParse(..), BranchProtectionBodyParse(..), ApiError(..), BranchProtection(..), RequiredPullRequestReviews, RequiredStatusCheck)
+import Data.Github.Repository (Repository, parseRepository)
+import Data.Github.Api.BranchProtection (ApiError(..), BranchProtection(..), RequiredPullRequestReviews, RequiredStatusCheck, parseBranchProtection, parseApiError)
 import Data.HTTP.Method (Method(..))
 import Data.Maybe (Maybe(..))
-import Network.HTTP.Affjax (affjax, defaultRequest, AffjaxRequest, AffjaxResponse, AJAX)
-import Network.HTTP.Affjax.Request (class Requestable)
-import Network.HTTP.Affjax.Response (class Respondable)
-import Network.HTTP.RequestHeader (RequestHeader(..))
-import Network.HTTP.StatusCode (StatusCode(..))
-import Data.Foreign (MultipleErrors)
+import Affjax (Request, defaultRequest, Response)
+import Affjax as Affjax
+import Affjax.RequestHeader (RequestHeader(..))
+import Affjax.StatusCode (StatusCode(..))
+import Affjax.ResponseFormat (ResponseFormatError)
+import Affjax.ResponseFormat as ResponseFormat
+import Foreign (MultipleErrors)
 import Data.Github.Settings.BranchProtection (BranchProtectionSettings(..), PullRequestReviewSettings, StatusChecksSettings)
 
 ---------------------------
 -- REQUEST
 ---------------------------
 request
-  :: forall eff a b. Requestable a => Respondable b
-  =>  AffjaxRequest a
-  -> (Either Error (AffjaxResponse b) -> Eff (ajax :: AJAX | eff) Unit)
-  -> Eff (ajax :: AJAX | eff) Unit
-request req cb = runAff cb aff *> pure unit where
-  -- innerCb :: (Either Error (AffjaxResponse b) → Eff (ajax :: AJAX | eff) Unit)
-  -- innerCb (Left err)  = cb $ Left err
-  -- innerCb (Right val) = cb $ Right val
+  :: forall a
+  . Request a
+  -> (Either Error (Response a) -> Effect Unit)
+  -> Effect Unit
+-- Run the Aff and ignore the resulting fiber
+request req outercb = runAff innercb (Affjax.request req) *> pure unit where
+  -- Simplify the outercb signature by treating ResponseFormatError as a normal Error
+  innercb :: (Either Error (Response (Either ResponseFormatError a))) -> Effect Unit
+  innercb (Left err) = outercb (Left err)
+  innercb (Right {body: (Left err)}) = outercb (Left (error "Incorrect format"))
+  innercb
+    (Right
+      { body: (Right a)
+      , status
+      , statusText
+      , headers
+      }
+    ) = outercb (Right
+              { body: a
+              , status
+              , statusText
+              , headers
+              }
+           )
 
-  aff :: Aff (ajax :: AJAX | eff) (AffjaxResponse b)
-  aff = affjax req
 
 requestCont
-  :: forall eff a b. Requestable a => Respondable b
-  => AffjaxRequest a
-  -> Async (ajax :: AJAX | eff) (Either Error (AffjaxResponse b))
+  :: forall a
+  . Request a
+  -> Async (Either Error (Response a))
 requestCont req = ContT (\cb -> request req cb)
 
 authHeader :: String -> RequestHeader
@@ -82,31 +97,32 @@ site url = "https://www.github.com/" <> url
 -- Githubs documentation https://developer.github.com/v3/repos/#get
 
 getRepo
-  :: forall eff
-  .  Maybe String -- Access token
+  :: Maybe String -- Access token
   -> String       -- Organization name
   -> String       -- Repository name
-  -> Async (ajax :: AJAX | eff) (Either GetRepoErrors Repository)
+  -> Async (Either GetRepoErrors Repository)
 getRepo maybeAccessToken org repo =
   -- Request the url and transform both the error and the result
   transformResponse <$> requestCont req
     where
+      req :: Request String
       req = defaultRequest  { url = (apiRepoUrl org repo)
                             , headers = addAccessTokenIfPresent maybeAccessToken []
                             , method = Left GET
+                            , responseFormat = ResponseFormat.string
                             }
 
-      transformResponse :: Either Error (AffjaxResponse RepositoryParse) -> Either GetRepoErrors Repository
+      transformResponse :: Either Error (Response String) -> Either GetRepoErrors Repository
       transformResponse (Left err)  = Left (InternalError $ message err)
       transformResponse (Right val) = case getStatusCode val.status of
-        200 -> interpretParsedResponse val.response
+        200 -> interpretParsedResponse (parseRepository val.body)
         401 -> Left InvalidCredentials
         404 -> Left (RepoNotFound $ siteRepoUrl org repo)
         n   -> Left (InternalError $ "Unexpected status code " <> show n)
 
-      interpretParsedResponse :: RepositoryParse -> Either GetRepoErrors Repository
-      interpretParsedResponse (RepositoryParse (Left err)) = Left (InvalidResponse err)
-      interpretParsedResponse (RepositoryParse (Right r)) = Right r
+      interpretParsedResponse :: Either MultipleErrors Repository -> Either GetRepoErrors Repository
+      interpretParsedResponse (Left err) = Left (InvalidResponse err)
+      interpretParsedResponse (Right r) = Right r
 
       apiRepoUrl :: String -> String -> String
       apiRepoUrl owner repo' = api $ "repos/" <> owner <> "/" <> repo'
@@ -134,12 +150,11 @@ instance showGetRepoErrors :: Show GetRepoErrors  where
   show InvalidCredentials = "InvalidCredentials"
 
 getBranchProtectionSettings
-  :: forall eff
-  .  String -- Access token
+  :: String -- Access token
   -> String -- Organization name
   -> String -- Repository name
   -> String -- Branch name
-  -> Async (ajax :: AJAX | eff) (Either GetBranchProtectionErrors BranchProtectionSettings)
+  -> Async (Either GetBranchProtectionErrors BranchProtectionSettings)
 getBranchProtectionSettings accessToken org repo branch =
   -- Make the API call and interpret the response
   interpretResponse <$> getBranchProtection accessToken org repo branch
@@ -196,16 +211,16 @@ getBranchProtectionSettings accessToken org repo branch =
 
 
 getBranchProtection
-  :: forall eff
-  .  String -- Access token
+  :: String -- Access token
   -> String -- Organization name
   -> String -- Repository name
   -> String -- Branch name
-  -> Async (ajax :: AJAX | eff) (Either GetBranchProtectionErrors BranchProtection)
+  -> Async (Either GetBranchProtectionErrors BranchProtection)
 getBranchProtection accessToken org repo branch =
   -- Request the url and transform both the error and the result
   transformResponse <$> requestCont req
     where
+      req :: Request String
       req = defaultRequest  { url = (endpointUrl org repo branch)
                             , headers =
                               [ authHeader accessToken
@@ -217,27 +232,24 @@ getBranchProtection accessToken org repo branch =
                               , acceptHeader "application/vnd.github.zzzax-preview+json"
                               ]
                             , method = Left GET
+                            , responseFormat = ResponseFormat.string
                             }
 
-      transformResponse :: Either Error (AffjaxResponse BranchProtectionParse) -> Either GetBranchProtectionErrors BranchProtection
+      transformResponse :: Either Error (Response String) -> Either GetBranchProtectionErrors BranchProtection
       transformResponse (Left err)  = Left (InternalError' $ message err)
       transformResponse (Right val) = case getStatusCode val.status of
-        200 -> interpretParsedResponse val.response
+        200 -> interpretParsedResponse (parseBranchProtection val.body)
         401 -> Left InvalidCredentials'
-        404 -> interpret404Response val.response
+        404 -> interpret404Response (parseApiError val.body)
         n   -> Left (InternalError' $ "Unexpected status code " <> show n)
 
-      interpretParsedResponse :: BranchProtectionParse -> Either GetBranchProtectionErrors BranchProtection
-      interpretParsedResponse (BranchProtectionParse (Left err)) = Left (InvalidResponse' err)
-      interpretParsedResponse (BranchProtectionParse (Right (Error r))) = Left (InternalError' "invalid response") -- TODO: change to invalidResponse
-      interpretParsedResponse (BranchProtectionParse (Right (Branch r))) = Right r
+      interpretParsedResponse :: Either MultipleErrors BranchProtection -> Either GetBranchProtectionErrors BranchProtection
+      interpretParsedResponse (Left err) = Left (InvalidResponse' err)
+      interpretParsedResponse (Right bp) = Right bp
 
-      interpret404Response :: BranchProtectionParse -> Either GetBranchProtectionErrors BranchProtection
-      -- TODO: right now this error is here to allow it to compile, but it should check wheter the message is
-      -- "Branch not protected" or "Branch not found"
-      interpret404Response (BranchProtectionParse (Left err)) = Left (InvalidResponse' err)
-      interpret404Response (BranchProtectionParse (Right (Branch r))) = Left (InternalError' "shoudnt parse a response if 404")  -- TODO: change to invalidResponse
-      interpret404Response (BranchProtectionParse (Right (Error (ApiError r)))) = case r.message of
+      interpret404Response :: Either MultipleErrors ApiError -> Either GetBranchProtectionErrors BranchProtection
+      interpret404Response (Left err) = Left (InvalidResponse' err)
+      interpret404Response (Right (ApiError r)) = case r.message of
           "Branch not protected" -> Left GetBranchNotProtected
           "Branch not found" -> Left (BranchNotFound org repo branch)
           _ -> Left (InternalError' "invalid response")

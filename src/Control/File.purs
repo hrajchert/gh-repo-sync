@@ -9,18 +9,17 @@ module Control.File
 
 import Control.Async (Async)
 import Control.Monad.Cont.Trans (ContT(..))
-import Control.Monad.Eff.Exception (Error, message)
 import Data.Bifunctor (lmap)
 import Data.Either (Either)
 import Data.Explain (class Explain, explain)
 import Data.Foldable (foldl)
-import Data.Foreign (ForeignError, renderForeignError)
+import Foreign (ForeignError, renderForeignError)
 import Data.List.Types (NonEmptyList)
 import Data.Newtype (class Newtype, wrap)
 import Data.Traversable (traverse)
-import Node.Buffer (Buffer, BUFFER, toString)
+import Effect.Exception (Error, message)
+import Node.Buffer (Buffer, toString)
 import Node.Encoding (Encoding(..))
-import Node.FS (FS)
 import Node.FS.Async (readFile)
 import Prelude (class Show, bind, pure, show, (#), ($), (<#>), (<>), (<$>))
 -- import Simple.JSON (class ReadForeign, readJSON)
@@ -28,16 +27,14 @@ import Data.JSON.ParseForeign (class ParseForeign, readJSON)
 
 
 readFileCont
-  :: forall eff
-   . String
-  -> Async (fs :: FS, buffer :: BUFFER | eff) (Either Error Buffer)
+  :: String
+  -> Async (Either Error Buffer)
 readFileCont path = ContT $ readFile path
 
 
 readTextFile
-  :: forall eff
-  . String
-  -> Async (fs :: FS, buffer :: BUFFER | eff) (Either Error String)
+  :: String
+  -> Async (Either Error String)
 readTextFile path = do
   maybeBuffer <- readFileCont path
   -- Async eff == ContT (cb -> Eff eff Unit)
@@ -86,10 +83,10 @@ mapJsonParseError :: String -> NonEmptyList ForeignError -> ReadJsonError
 mapJsonParseError path errors = JsonParseError path errors
 
 readJsonFile
-  :: forall eff t a
+  :: forall t a
   .  ParseForeign a => Newtype t a
   => String
-  -> Async (fs :: FS, buffer :: BUFFER | eff) (Either ReadJsonError t)
+  -> Async (Either ReadJsonError t)
 readJsonFile path = do
   -- maybeString :: Either ReadJsonError String
   maybeString <-

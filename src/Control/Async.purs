@@ -5,33 +5,33 @@ module Control.Async
   )
    where
 
-import Prelude 
+import Prelude
 
+import Effect (Effect)
 import Control.Monad.Cont.Trans (ContT)
-import Control.Monad.Eff (Eff)
 import Data.Either (Either(..))
 import Data.Bifunctor (lmap)
 
 -- Async eff a = (Either Error a -> Eff eff Unit) -> Eff eff Unit
-type Async eff = ContT Unit (Eff eff)
+type Async = ContT Unit Effect
 
 
 -- Helper functions to work with Async (Either e a)
 
 -- Helps with do notation, runs the async f if the previous result was successful
 -- kind like then from promises
-ifItWorked :: forall a b e eff
-  .  Either e a 
-  -> (a -> Async eff (Either e b)) 
-  -> Async eff (Either e b)
-ifItWorked maybeA f = 
+ifItWorked :: forall a b e
+  .  Either e a
+  -> (a -> Async (Either e b))
+  -> Async (Either e b)
+ifItWorked maybeA f =
   case maybeA of
     Left err -> pure $ Left err
     Right c  -> f c
 
 
-withError :: forall eff e e' a 
-  .  Async eff (Either e a) 
-  -> (e -> e') 
-  -> Async eff (Either e' a)
-withError a fe = lmap fe <$> a 
+withError :: forall e e' a
+  .  Async (Either e a)
+  -> (e -> e')
+  -> Async (Either e' a)
+withError a fe = lmap fe <$> a

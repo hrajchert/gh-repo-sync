@@ -6,7 +6,7 @@ import Test.Spec.Assertions (shouldEqual)
 import Utils.String (capitalize)
 
 
-stringSpec :: forall eff. Spec eff Unit
+stringSpec :: Spec Unit
 stringSpec =
     describe "String" do
       describe "capitilize" do

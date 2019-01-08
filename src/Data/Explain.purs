@@ -6,8 +6,7 @@ module Data.Explain
 
 import Data.Explain (class Explain, explain)
 import Data.Foldable (foldl, class Foldable)
-import Data.Foreign (ForeignError(TypeMismatch, JSONError, ErrorAtProperty, ErrorAtIndex, ForeignError))
-import Data.List.Types (NonEmptyList)
+import Foreign (ForeignError(TypeMismatch, ErrorAtProperty, ErrorAtIndex, ForeignError))
 import Prelude (show, (<>))
 import Utils.String (capitalize)
 
@@ -31,7 +30,6 @@ instance explainForeignError :: Explain ForeignError where
       (ForeignError msg)       -> msg
       (ErrorAtIndex _ _)        -> "at position " <> showProperty true e <> " " <> showError e
       (ErrorAtProperty _ _) -> "property " <> show (showProperty true e) <> " " <> showError e
-      (JSONError s)            -> "invalid json: " <> s
       (TypeMismatch exp act)   -> "i was expecting " <> show exp <> ", but got " <> show act
     where
       showProperty :: Boolean -> ForeignError -> String

@@ -1,6 +1,6 @@
 module Data.Github.Repository
   ( Repository
-  , RepositoryParse(..)
+  , parseRepository
   , Owner
   , RepositoryPermissions
   , Organization
@@ -10,15 +10,10 @@ where
 import Prelude
 
 import Data.Either (Either)
-import Data.Foreign (F, MultipleErrors)
-import Data.Maybe (Maybe(..))
-import Data.MediaType.Common (applicationJSON)
-import Data.Newtype (class Newtype, wrap)
-import Data.Tuple (Tuple(..))
-import Network.HTTP.Affjax.Response (class Respondable, ResponseContent, ResponseType(JSONResponse))
--- import Simple.JSON (read, read')
-import Data.JSON.ParseForeign (read, read')
-
+import Foreign (F, MultipleErrors, Foreign)
+import Data.JSON.ParseForeign (parseForeign, class ParseForeign, readJSON)
+import Data.Maybe (Maybe)
+import Data.Newtype (class Newtype)
 
 type Owner =
   { login               :: String
@@ -73,7 +68,9 @@ type Organization =
   , site_admin          :: Boolean
   }
 
-newtype Repository = Repository
+newtype Repository = Repository RepositoryData
+
+type RepositoryData =
   { id                  :: Int
   , name                :: String
   , full_name           :: String
@@ -160,18 +157,14 @@ derive instance newtypeRepository :: Newtype Repository _
 instance showRepository :: Show Repository  where
   show (Repository c) = "(Repository " <> c.full_name <> ")"
 
-instance respondableRepository :: Respondable Repository where
-  responseType = Tuple (Just applicationJSON) JSONResponse
-  fromResponse :: ResponseContent -> F Repository
-  fromResponse foreignData = wrap <$> read' foreignData
 
-newtype RepositoryParse = RepositoryParse (Either MultipleErrors Repository)
+parseRepositoryData :: Foreign -> F RepositoryData
+parseRepositoryData = parseForeign
 
-instance respondableMaybeRepository :: Respondable RepositoryParse  where
-  responseType = Tuple (Just applicationJSON) JSONResponse
-  fromResponse :: ResponseContent -> F RepositoryParse
-  fromResponse foreignData = pure $ RepositoryParse (parseForeign foreignData)
-    where
-        parseForeign :: ResponseContent -> Either MultipleErrors Repository
-        parseForeign foreignD = wrap <$> read foreignD
+instance parseForeignRepository :: ParseForeign Repository where
+  parseForeign f
+    =  Repository <$> parseRepositoryData f
 
+
+parseRepository :: String -> Either MultipleErrors Repository
+parseRepository = readJSON

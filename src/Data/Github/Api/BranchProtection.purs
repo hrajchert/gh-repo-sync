@@ -1,6 +1,5 @@
 module Data.Github.Api.BranchProtection
 --   ( Repository
---   , RepositoryParse(..)
 --   , Owner
 --   , RepositoryPermissions
 --   , Organization
@@ -11,18 +10,11 @@ where
 import Prelude
 
 import Data.Either (Either)
-import Data.Foreign (F, MultipleErrors)
-import Data.Maybe (Maybe(..))
-import Data.MediaType.Common (applicationJSON)
-import Data.Newtype (class Newtype, wrap)
-import Data.Tuple (Tuple(..))
-import Network.HTTP.Affjax.Response (class Respondable, ResponseContent, ResponseType(JSONResponse))
-import Control.Alt ((<|>))
-import Data.Foreign (F, Foreign, ForeignError(..), MultipleErrors, fail, readArray, readBoolean, readChar, readInt, readNull, readNumber, readString)
+import Foreign (F, MultipleErrors, Foreign)
+import Data.Maybe (Maybe)
+import Data.Newtype (class Newtype)
 -- import Simple.JSON (read, read')
-import Data.JSON.ParseForeign (read, read')
-import Data.JSON.ParseForeign (class ParseForeign, readJSON, parseForeign)
-
+import Data.JSON.ParseForeign (class ParseForeign, parseForeign, readJSON)
 -- ********************
 -- * BranchProtection *
 -- ********************
@@ -51,11 +43,9 @@ instance parseForeignBranchProtection :: ParseForeign BranchProtection where
 instance showBranchProtection :: Show BranchProtection  where
   show (BranchProtection c) = "(BranchProtection " <> c.url <> ")"
 
-instance respondableBranchProtection :: Respondable BranchProtection where
-  responseType = Tuple (Just applicationJSON) JSONResponse
-  fromResponse :: ResponseContent -> F BranchProtection
-  fromResponse foreignData = wrap <$> read' foreignData
 
+parseBranchProtection' :: String -> Either MultipleErrors BranchProtection
+parseBranchProtection' = readJSON
 
 type EnforceAdmins =
   { url     :: String
@@ -132,44 +122,19 @@ type Restrictions =
   }
 
 
-
 -- *************************
 -- * BranchProtectionParse *
 -- *************************
 
--- Class to parse the API body
-data BranchProtectionBodyParse
-  = Branch BranchProtection
-  | Error ApiError
+parseBranchProtection :: String -> Either MultipleErrors BranchProtection
+parseBranchProtection = readJSON
 
-parseBranchProtection :: Foreign -> F BranchProtection
-parseBranchProtection = parseForeign
-
-parseApiError :: Foreign -> F ApiError
-parseApiError = parseForeign
-
--- Try to parse it as a BranchProtection or an ApiError
-instance parseForeignBPBP :: ParseForeign BranchProtectionBodyParse where
-  parseForeign f
-    =  Branch <$> parseBranchProtection f
-   <|> Error <$> parseApiError f
-
-newtype BranchProtectionParse = BranchProtectionParse (Either MultipleErrors BranchProtectionBodyParse)
-
-instance respondableMaybeBranchProtection :: Respondable BranchProtectionParse  where
-  responseType = Tuple (Just applicationJSON) JSONResponse
-  fromResponse :: ResponseContent -> F BranchProtectionParse
-  fromResponse foreignData = pure $ BranchProtectionParse (parseForeign foreignData)
-    where
-        parseForeign :: ResponseContent -> Either MultipleErrors BranchProtectionBodyParse
-        parseForeign foreignD = read foreignD
+parseApiError :: String -> Either MultipleErrors ApiError
+parseApiError = readJSON
 
 -- ************
 -- * ApiError *
 -- ************
-
-newtype ApiErrorParse = ApiErrorParse (Either MultipleErrors ApiError)
-
 
 type ApiErrorData =
   { message           :: String
@@ -188,12 +153,4 @@ derive instance newtypeApiError :: Newtype ApiError _
 
 instance showApiError :: Show ApiError  where
   show (ApiError e) = "(ApiError " <> e.message <> ")"
-
-instance respondableApiErrorParse :: Respondable ApiErrorParse  where
-  responseType = Tuple (Just applicationJSON) JSONResponse
-  fromResponse :: ResponseContent -> F ApiErrorParse
-  fromResponse foreignData = pure $ ApiErrorParse (parseForeign foreignData)
-    where
-        parseForeign :: ResponseContent -> Either MultipleErrors ApiError
-        parseForeign foreignD = wrap <$> read foreignD
 

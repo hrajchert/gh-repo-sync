@@ -3,12 +3,12 @@ module Test.Data.ExplainSpec where
 import Prelude
 
 import Data.Explain (explain)
-import Data.Foreign (ForeignError(..))
+import Foreign (ForeignError(..))
 import Test.Spec (describe, it, Spec)
 import Test.Spec.Assertions (shouldEqual)
 import Data.String (trim)
 
-explainSpec :: forall eff. Spec eff Unit
+explainSpec :: Spec Unit
 explainSpec =
   describe "ForeignError" do
     describe "Type Mismatch" do

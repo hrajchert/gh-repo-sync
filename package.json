@@ -18,9 +18,13 @@
     "start-dev": "pulp -w run",
     "tdd": "pulp -w test",
     "build": "pulp build",
-    "test": "pulp test"
+    "test": "pulp test --no-check-main"
   },
-  "keywords": ["pursescript", "github", "tool"],
+  "keywords": [
+    "pursescript",
+    "github",
+    "tool"
+  ],
   "author": "Hernan Rajchert",
   "license": "MIT",
   "dependencies": {
@@ -31,5 +35,8 @@
   "bugs": {
     "url": "https://github.com/hrajchert/gh-repo-sync/issues"
   },
-  "homepage": "https://github.com/hrajchert/gh-repo-sync"
+  "homepage": "https://github.com/hrajchert/gh-repo-sync",
+  "devDependencies": {
+    "purescript": "^0.12.1"
+  }
 }

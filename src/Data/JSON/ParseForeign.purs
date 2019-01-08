@@ -13,25 +13,31 @@ module Data.JSON.ParseForeign
 import Prelude
 
 import Control.Alt ((<|>))
-import Control.Monad.Except (runExcept, withExcept)
+import Control.Monad.Except (ExceptT(..),runExcept, withExcept)
+-- import Control.Monad.Except  runExcept, runExceptT, withExcept)
 import Data.Bifoldable (bifoldMap)
+import Data.Bifunctor (lmap)
 import Data.Either (Either)
+import Data.Identity (Identity(..))
 import Data.FoldableWithIndex (foldlWithIndex)
-import Data.Foreign (F, Foreign, ForeignError(..), MultipleErrors, fail, readArray, readBoolean, readChar, readInt, readNull, readNumber, readString)
-import Data.Foreign.Index (readProp)
-import Data.Foreign.Internal (readStrMap)
-import Data.Foreign.JSON (parseJSON)
-import Data.Foreign.NullOrUndefined (readNullOrUndefined)
+import Data.Maybe (Maybe(..))
+import Foreign (F, Foreign, ForeignError(..), MultipleErrors, fail, readArray, readBoolean, readChar, readInt, readNull, readNumber, readString, isNull, isUndefined, tagOf, unsafeFromForeign)
+import Foreign.Index (readProp)
+import Effect.Exception (message, try)
+import Effect.Uncurried as EU
+import Effect.Unsafe (unsafePerformEffect)
+import Foreign.Object (Object)
+import Foreign.Object as Object
 import Data.List.NonEmpty (NonEmptyList, toUnfoldable, appendFoldable)
-import Data.Maybe (Maybe)
 import Data.Nullable (Nullable, toNullable)
-import Data.Record.Builder (Builder)
-import Data.Record.Builder as Builder
-import Data.StrMap as StrMap
+import Record.Builder (Builder)
+import Record.Builder as Builder
 import Data.Symbol (class IsSymbol, SProxy(..), reflectSymbol)
 import Data.Traversable (sequence, traverse)
 import Data.Variant (Variant, inj)
-import Type.Row (class RowLacks, class RowToList, Cons, Nil, RLProxy(RLProxy), kind RowList)
+import Prim.Row as Row
+import Prim.RowList (class RowToList, Cons, Nil, kind RowList)
+import Type.Prelude (RLProxy(..))
 
 -- | Read a JSON string to a type `a` while returning a `MultipleErrors` if the
 -- | parsing failed.
@@ -59,6 +65,20 @@ read' :: forall a
   => Foreign
   -> F a
 read' = parseForeign
+
+foreign import _parseJSON :: EU.EffectFn1 String Foreign
+
+parseJSON :: String -> F Foreign
+parseJSON
+    = ExceptT
+  <<< Identity
+  <<< lmap (pure <<< ForeignError <<< message)
+  <<< runPure
+  <<< try
+  <<< EU.runEffectFn1 _parseJSON
+  where
+    -- Nate Faubion: "It uses unsafePerformEffect because that’s the only way to catch exceptions and still use the builtin json decoder"
+    runPure = unsafePerformEffect
 
 class ParseForeign a where
   parseForeign :: Foreign -> F a
@@ -133,6 +153,9 @@ instance parseArray :: ParseForeign a => ParseForeign (Array a) where
 
 instance parseMaybe :: ParseForeign a => ParseForeign (Maybe a) where
   parseForeign = readNullOrUndefined parseForeign
+    where
+      readNullOrUndefined _ value | isNull value || isUndefined value = pure Nothing
+      readNullOrUndefined f value = Just <$> f value
 
 instance parseNullable :: ParseForeign a => ParseForeign (Nullable a) where
   parseForeign o = withExcept (map reformat) $
@@ -142,8 +165,13 @@ instance parseNullable :: ParseForeign a => ParseForeign (Nullable a) where
         TypeMismatch inner other -> TypeMismatch ("Nullable " <> inner) other
         _ -> error
 
-instance parseStrMap :: ParseForeign a => ParseForeign (StrMap.StrMap a) where
-  parseForeign = sequence <<< StrMap.mapWithKey (const parseForeign) <=< readStrMap
+instance parseObject :: ParseForeign a => ParseForeign (Object.Object a) where
+  parseForeign = sequence <<< Object.mapWithKey (const parseForeign) <=< readObject'
+    where
+      readObject' :: Foreign -> F (Object Foreign)
+      readObject' value
+        | tagOf value == "Object" = pure $ unsafeFromForeign value
+        | otherwise = fail $ TypeMismatch "Object" (tagOf value)
 
 
 instance parseRecord ::
@@ -173,8 +201,8 @@ instance parseForeignFieldsCons ::
   ( IsSymbol fieldName
   , ParseForeign fieldType
   , ParseForeignFields tail from from'
-  , RowLacks fieldName from'
-  , RowCons fieldName fieldType from' to
+  , Row.Lacks fieldName from'
+  , Row.Cons fieldName fieldType from' to
   ) => ParseForeignFields (Cons fieldName fieldType tail) from to where
   getFields _ obj = do
     value :: fieldType <- withExcept' $ parseForeign =<< readProp name obj
@@ -214,7 +242,7 @@ instance parseForeignFieldsCons ::
 instance parseForeignFieldsNil ::
   ParseForeignFields Nil () () where
   getFields _ _ =
-    pure id
+    pure identity
 
 instance parseForeignVariant ::
   ( RowToList variants rl
@@ -235,7 +263,7 @@ instance parseVariantNil ::
 instance parseVariantCons ::
   ( IsSymbol name
   , ParseForeign ty
-  , RowCons name ty trash row
+  , Row.Cons name ty trash row
   , ParseForeignVariant tail row
   ) => ParseForeignVariant (Cons name ty tail) row where
   parseVariantImpl _ o = do
