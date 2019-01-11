@@ -1,16 +1,76 @@
-module Data.Github.Settings.BranchProtection
+module Github.Settings.BranchProtection
   ( BranchProtectionSettings(..)
   , ProtectedBranchSettings
   , PullRequestReviewSettings
   , StatusChecksSettings
+  , getBranchProtectionSettings
   )
 where
 
 import Prelude
-import Data.JSON.ParseForeign (class ParseForeign, parseForeign)
-import Foreign (F, Foreign)
-import Data.Maybe (Maybe(..))
+
+import Control.Async (Async)
+import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
+import Data.JSON.ParseForeign (class ParseForeign, parseForeign)
+import Data.Maybe (Maybe(..))
+import Foreign (F, Foreign)
+import Github.Api.BranchProtection (BranchProtection(..), GetBranchProtectionErrors(..), RequiredPullRequestReviews, RequiredStatusCheck, getBranchProtection)
+
+
+getBranchProtectionSettings
+  :: String -- Access token
+  -> String -- Organization name
+  -> String -- Repository name
+  -> String -- Branch name
+  -> Async (Either GetBranchProtectionErrors BranchProtectionSettings) -- Probably create our own errors
+getBranchProtectionSettings accessToken org repo branch =
+  -- Make the API call and interpret the response
+  interpretResponse <$> getBranchProtection accessToken org repo branch
+    where
+      interpretResponse :: Either GetBranchProtectionErrors BranchProtection -> Either GetBranchProtectionErrors BranchProtectionSettings
+      interpretResponse (Left GetBranchNotProtected) = pure BranchNotProtected
+      interpretResponse (Left error) = Left error
+      interpretResponse (Right (BranchProtection
+                                  { required_pull_request_reviews: maybePR
+                                  , required_status_checks: maybeSC
+                                  , required_signatures
+                                  , enforce_admins
+                                  }
+                                )
+                        ) = pure $ ProtectedBranch
+                                    { pullRequestReview    : interpretPullRequestReview maybePR
+                                    , statusChecks         : interpretStatusCheck maybeSC
+                                    , requireSignedCommits : required_signatures.enabled
+                                    , includeAdministrators: enforce_admins.enabled
+                                    }
+
+
+      interpretPullRequestReview :: Maybe RequiredPullRequestReviews -> Maybe PullRequestReviewSettings
+      interpretPullRequestReview Nothing = Nothing
+      interpretPullRequestReview
+          (Just
+            { required_approving_review_count: requiredApprovingReviews
+            , dismiss_stale_reviews: dismissStale
+            , require_code_owner_reviews: requireReviewFromOwner
+            }
+          ) = Just
+                { requiredApprovingReviews
+                , dismissStale
+                , requireReviewFromOwner
+                }
+
+      interpretStatusCheck :: Maybe RequiredStatusCheck -> Maybe StatusChecksSettings
+      interpretStatusCheck Nothing = Nothing
+      interpretStatusCheck
+        (Just
+          { strict: requireUpToDate
+          , contexts: checks
+          }
+        ) = Just
+              { requireUpToDate
+              , checks
+              }
 
 -- | Data structure that models the settings in this page
 -- | https://github.com/<owner>/<repo>/settings/branches/<branch>
@@ -89,8 +149,7 @@ statusChecksRules
    <> checks <#> (\check -> "The status code check " <> show check <> " must be valid before merging the PR.")
 
 
-
-
+-- TODO: maybe move somewhere else?
 boolRule :: String -> Boolean -> Array String
 boolRule _   false = []
 boolRule str true  = [str]

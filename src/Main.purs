@@ -4,16 +4,15 @@ import Prelude
 
 import Control.Async (Async, ifItWorked, withError)
 import Control.File as File
-import Control.Github.Api (GetRepoErrors, getRepo)
+import Github.Api.Repository (Repository, GetRepoErrors, getRepo)
 import Control.Monad.Cont.Trans (runContT)
 import Effect (Effect)
 import Effect.Console (log)
 import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
-import Data.Github.Repository (Repository)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
-import Data.Github.Settings.BranchProtection (BranchProtectionSettings)
+import Github.Settings.BranchProtection (BranchProtectionSettings)
 
 newtype Config = Config
   { githubToken  :: Maybe String

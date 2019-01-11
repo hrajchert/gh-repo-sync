@@ -33,6 +33,6 @@ To run it
 
 
 
-You'll need to create a `config.json with the properties as stated by the [Config object](src/Main.purs). You can issue a github token from the [Personal Access Token](https://github.com/settings/tokens/new) page.
+You'll need to create a `config.json with the properties as stated by the [Config object](src/Main.purs#L18). You can issue a github token from the [Personal Access Token](https://github.com/settings/tokens/new) page.
 
 
