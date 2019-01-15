@@ -1,11 +1,17 @@
 module Github.Api.BranchProtection
---   ( Repository
---   , Owner
---   , RepositoryPermissions
---   , Organization
---   )
+  ( BranchProtection(..)
+  , getBranchProtection
+  , GetBranchProtectionErrors(..)
+  , RequiredPullRequestReviews
+  , DismissalRestrictions
+  , RequiredStatusCheck
+  , EnforceAdmins
+  , RequiredSignatures
+  , Restrictions
+  , User
+  , Team
+  )
 where
-
 
 import Prelude
 
@@ -52,12 +58,15 @@ getBranchProtection accessToken org repo branch =
                             , responseFormat = ResponseFormat.string
                             }
 
+      endpointUrl :: String -> String -> String -> String
+      endpointUrl owner repo' branch' = api $ "repos/" <> owner <> "/" <> repo' <> "/branches/" <> branch' <> "/protection"
+
       transformResponse :: Either Error (Response String) -> Either GetBranchProtectionErrors BranchProtection
       transformResponse (Left err)  = Left (InternalError' $ message err)
       transformResponse (Right val) = case getStatusCode val.status of
-        200 -> interpretParsedResponse (parseBranchProtection val.body)
+        200 -> interpretParsedResponse (readJSON val.body)
         401 -> Left InvalidCredentials'
-        404 -> interpret404Response (parseApiError val.body)
+        404 -> interpret404Response (readJSON val.body)
         n   -> Left (InternalError' $ "Unexpected status code " <> show n)
 
       interpretParsedResponse :: Either MultipleErrors BranchProtection -> Either GetBranchProtectionErrors BranchProtection
@@ -71,8 +80,6 @@ getBranchProtection accessToken org repo branch =
           "Branch not found" -> Left (BranchNotFound org repo branch)
           _ -> Left (InternalError' "invalid response")
 
-      endpointUrl :: String -> String -> String -> String
-      endpointUrl owner repo' branch' = api $ "repos/" <> owner <> "/" <> repo' <> "/branches/" <> branch' <> "/protection"
 
 
 data GetBranchProtectionErrors
@@ -90,7 +97,7 @@ instance explainGetBranchProtectionErrors :: Explain GetBranchProtectionErrors w
   explain (InvalidResponse' err)  = "Github response doesn't match what we expected: " <> explain err
   explain InvalidCredentials'     = "The access token you provided is invalid or cancelled"
 
-type BranchProtectionData =
+newtype BranchProtection = BranchProtection
   { url                           :: String
   , required_status_checks        :: Maybe RequiredStatusCheck
   , enforce_admins                :: EnforceAdmins
@@ -99,24 +106,13 @@ type BranchProtectionData =
   , restrictions                  :: Maybe Restrictions
   }
 
-parseBranchProtectionData :: Foreign -> F BranchProtectionData
-parseBranchProtectionData = parseForeign
-
-newtype BranchProtection = BranchProtection BranchProtectionData
-
-
 derive instance newtypeBranchProtection :: Newtype BranchProtection _
--- derive instance parseForeignBranchProtection :: ParseForeign BranchProtection _
 
-instance parseForeignBranchProtection :: ParseForeign BranchProtection where
-  parseForeign f = BranchProtection <$> parseBranchProtectionData f
+derive newtype instance parseForeignBranchProtection :: ParseForeign BranchProtection
 
 instance showBranchProtection :: Show BranchProtection  where
   show (BranchProtection c) = "(BranchProtection " <> c.url <> ")"
 
-
-parseBranchProtection' :: String -> Either MultipleErrors BranchProtection
-parseBranchProtection' = readJSON
 
 type EnforceAdmins =
   { url     :: String
@@ -191,17 +187,6 @@ type Restrictions =
   , users :: Array User
   , teams :: Array Team
   }
-
-
--- *************************
--- * BranchProtectionParse *
--- *************************
-
-parseBranchProtection :: String -> Either MultipleErrors BranchProtection
-parseBranchProtection = readJSON
-
-parseApiError :: String -> Either MultipleErrors ApiError
-parseApiError = readJSON
 
 -- ************
 -- * ApiError *

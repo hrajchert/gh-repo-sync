@@ -1,6 +1,5 @@
 module Github.Api.Repository
   ( Repository
-  , parseRepository
   , Owner
   , RepositoryPermissions
   , Organization
@@ -17,11 +16,11 @@ import Control.Async (Async)
 import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
 import Data.HTTP.Method (Method(..))
-import Data.JSON.ParseForeign (parseForeign, class ParseForeign, readJSON)
+import Data.JSON.ParseForeign (class ParseForeign, readJSON)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Effect.Exception (Error, message)
-import Foreign (F, MultipleErrors, Foreign)
+import Foreign (MultipleErrors)
 import Github.Api.Api (addAccessTokenIfPresent, api, getStatusCode, requestCont, site)
 
 ---------------------------
@@ -44,11 +43,13 @@ getRepo maybeAccessToken org repo =
                             , method = Left GET
                             , responseFormat = ResponseFormat.string
                             }
+      apiRepoUrl :: String -> String -> String
+      apiRepoUrl owner repo' = api $ "repos/" <> owner <> "/" <> repo'
 
       transformResponse :: Either Error (Response String) -> Either GetRepoErrors Repository
       transformResponse (Left err)  = Left (InternalError $ message err)
       transformResponse (Right val) = case getStatusCode val.status of
-        200 -> interpretParsedResponse (parseRepository val.body)
+        200 -> interpretParsedResponse (readJSON val.body)
         401 -> Left InvalidCredentials
         404 -> Left (RepoNotFound $ siteRepoUrl org repo)
         n   -> Left (InternalError $ "Unexpected status code " <> show n)
@@ -56,9 +57,6 @@ getRepo maybeAccessToken org repo =
       interpretParsedResponse :: Either MultipleErrors Repository -> Either GetRepoErrors Repository
       interpretParsedResponse (Left err) = Left (InvalidResponse err)
       interpretParsedResponse (Right r) = Right r
-
-      apiRepoUrl :: String -> String -> String
-      apiRepoUrl owner repo' = api $ "repos/" <> owner <> "/" <> repo'
 
       siteRepoUrl :: String -> String -> String
       siteRepoUrl owner repo' = site $ owner <> "/" <> repo'
@@ -82,11 +80,7 @@ instance showGetRepoErrors :: Show GetRepoErrors  where
   show (InvalidResponse e) = "(InvalidResponse " <> show e <> ")"
   show InvalidCredentials = "InvalidCredentials"
 
-
-
-newtype Repository = Repository RepositoryData
-
-type RepositoryData =
+newtype Repository = Repository
   { id                  :: Int
   , name                :: String
   , full_name           :: String
@@ -168,22 +162,11 @@ type RepositoryData =
   }
 
 derive instance newtypeRepository :: Newtype Repository _
--- derive instance readForeignRepository :: ReadForeign Repository _
+
+derive newtype instance parseForeignRepository :: ParseForeign Repository
 
 instance showRepository :: Show Repository  where
   show (Repository c) = "(Repository " <> c.full_name <> ")"
-
-
-parseRepositoryData :: Foreign -> F RepositoryData
-parseRepositoryData = parseForeign
-
-instance parseForeignRepository :: ParseForeign Repository where
-  parseForeign f
-    =  Repository <$> parseRepositoryData f
-
-
-parseRepository :: String -> Either MultipleErrors Repository
-parseRepository = readJSON
 
 type Owner =
   { login               :: String
