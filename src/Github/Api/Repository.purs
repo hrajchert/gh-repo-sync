@@ -51,32 +51,32 @@ getRepo maybeAccessToken org repo =
       transformResponse (Right val) = case getStatusCode val.status of
         200 -> interpretParsedResponse (readJSON val.body)
         401 -> Left InvalidCredentials
-        404 -> Left (RepoNotFound $ siteRepoUrl org repo)
+        404 -> Left (RepoNotFound org repo)
         n   -> Left (InternalError $ "Unexpected status code " <> show n)
 
       interpretParsedResponse :: Either MultipleErrors Repository -> Either GetRepoErrors Repository
       interpretParsedResponse (Left err) = Left (InvalidResponse err)
       interpretParsedResponse (Right r) = Right r
 
-      siteRepoUrl :: String -> String -> String
-      siteRepoUrl owner repo' = site $ owner <> "/" <> repo'
+siteRepoUrl :: String -> String -> String
+siteRepoUrl owner repo' = site $ owner <> "/" <> repo'
 
 data GetRepoErrors
   = InternalError String
-  | RepoNotFound String
+  | RepoNotFound String String -- org repo
   | InvalidResponse MultipleErrors
   | InvalidCredentials
 
 instance explainGetRepoErrors :: Explain GetRepoErrors where
   explain :: GetRepoErrors -> String
   explain (InternalError str)    = "There was an internal error: " <> str
-  explain (RepoNotFound repoUrl) = "The repository (" <> repoUrl <> ") is not found, maybe it's private?"
+  explain (RepoNotFound org repo) = "The repository (" <> siteRepoUrl org repo <> ") is not found, maybe it's private?"
   explain (InvalidResponse err)  = "Github response doesn't match what we expected: " <> explain err
   explain InvalidCredentials     = "The access token you provided is invalid or cancelled"
 
 instance showGetRepoErrors :: Show GetRepoErrors  where
   show (InternalError e) = "(InternalError " <> e <> ")"
-  show (RepoNotFound e) = "(RepoNotFound " <> e <> ")"
+  show (RepoNotFound org repo) = "(RepoNotFound @" <> org <> "/" <> repo <> ")"
   show (InvalidResponse e) = "(InvalidResponse " <> show e <> ")"
   show InvalidCredentials = "InvalidCredentials"
 
