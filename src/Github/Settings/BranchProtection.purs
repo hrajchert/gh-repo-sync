@@ -16,10 +16,11 @@ import Data.JSON.ParseForeign (class ParseForeign, parseForeign)
 import Data.Maybe (Maybe(..))
 import Data.Rules (Rules, boolRule, maybeRules, rule)
 import Foreign (F, Foreign)
+import Github.Api.Api (AccessToken(..))
 import Github.Api.BranchProtection (BranchProtection(..), GetBranchProtectionErrors(..), RequiredPullRequestReviews, RequiredStatusCheck, getBranchProtection)
 
 getBranchProtectionSettings
-  :: String -- Access token
+  :: AccessToken -- Access token
   -> String -- Organization name
   -> String -- Repository name
   -> String -- Branch name

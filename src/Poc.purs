@@ -5,16 +5,17 @@ import Prelude
 import Control.Async (Async, ifItWorked, withError)
 import Control.File as File
 import Control.Monad.Cont.Trans (runContT)
-import Effect (Effect)
-import Effect.Console (log)
 import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
-import Github.Api.Repository (Repository, GetRepoErrors, getRepo)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
+import Effect (Effect)
+import Effect.Console (log)
+import Github.Api.Api (AccessToken(..))
+import Github.Api.Repository (Repository, GetRepoErrors, getRepo)
 
 newtype Config = Config
-  { githubToken  :: Maybe String
+  { githubToken  :: Maybe AccessToken
   , organization :: String
   , repository   :: String
   }

@@ -21,7 +21,7 @@ import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Effect.Exception (Error, message)
 import Foreign (MultipleErrors)
-import Github.Api.Api (addAccessTokenIfPresent, api, getStatusCode, requestCont, site)
+import Github.Api.Api (AccessToken, addAccessTokenIfPresent, api, getStatusCode, requestCont, site)
 
 ---------------------------
 -- get Repository
@@ -29,7 +29,7 @@ import Github.Api.Api (addAccessTokenIfPresent, api, getStatusCode, requestCont,
 -- Githubs documentation https://developer.github.com/v3/repos/#get
 
 getRepo
-  :: Maybe String -- Access token
+  :: Maybe AccessToken
   -> String       -- Organization name
   -> String       -- Repository name
   -> Async (Either GetRepoErrors Repository)

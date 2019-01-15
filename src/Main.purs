@@ -4,27 +4,25 @@ import Prelude
 
 import Control.Async (Async, ifItWorked, withError)
 import Control.File as File
-import Github.Api.Repository (Repository, GetRepoErrors, getRepo)
 import Control.Monad.Cont.Trans (runContT)
-import Effect (Effect)
-import Effect.Console (log)
 import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
+import Effect (Effect)
+import Effect.Console (log)
+import Github.Api.Api (AccessToken(..))
+import Github.Api.Repository (Repository, GetRepoErrors, getRepo)
 import Github.Settings.BranchProtection (BranchProtectionSettings)
 
 newtype Config = Config
-  { githubToken  :: Maybe String
+  { githubToken  :: Maybe AccessToken
   , organization :: String
   , repository   :: String
   , branchProtection :: BranchProtectionSettings
   }
 
 derive instance newtypeConfig :: Newtype Config _
-
-instance showConfig :: Show Config  where
-  show (Config c) = "{ githubToken: " <> (show (c.githubToken)) <> " }"
 
 readConfig :: String -> Async (Either File.ReadJsonError Config)
 readConfig = File.readJsonFile

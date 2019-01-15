@@ -8,19 +8,22 @@ module Github.Api.Api
    where
 
 import Prelude
-import Control.Async (Async)
-import Effect.Aff (runAff)
-import Control.Monad.Cont (ContT(ContT))
-import Effect (Effect)
-import Effect.Exception (Error, error)
-import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
+
 import Affjax (Request, Response)
 import Affjax as Affjax
 import Affjax.RequestHeader (RequestHeader(..))
-import Affjax.StatusCode (StatusCode(..))
 import Affjax.ResponseFormat (ResponseFormatError)
-
+import Affjax.StatusCode (StatusCode(..))
+import Control.Async (Async)
+import Control.Monad.Cont (ContT(ContT))
+import Data.Either (Either(..))
+import Data.JSON.ParseForeign (class ParseForeign)
+import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype)
+import Effect (Effect)
+import Effect.Aff (runAff)
+import Effect.Exception (Error, error)
+import Data.Show (class Show)
 ---------------------------
 -- REQUEST
 ---------------------------
@@ -57,14 +60,24 @@ requestCont
   -> Async (Either Error (Response a))
 requestCont req = ContT (\cb -> request req cb)
 
-authHeader :: String -> RequestHeader
-authHeader token = RequestHeader "Authorization" ("Bearer " <> token)
+-- Some methods are restricted and needs an  Access Token
+newtype AccessToken = AccessToken String
+
+-- Instances for parsing with SimpleJSON
+derive instance newtypeAccessToken :: Newtype AccessToken _
+derive newtype instance parseForeignAccessToken :: ParseForeign AccessToken
+
+instance showAccessToken :: Show AccessToken where
+  show _ = "<access-token>"
+
+authHeader :: AccessToken -> RequestHeader
+authHeader (AccessToken token) = RequestHeader "Authorization" ("Bearer " <> token)
 
 acceptHeader :: String -> RequestHeader
 acceptHeader negotiation = RequestHeader "Accept" negotiation
 
 
-addAccessTokenIfPresent :: Maybe String -> Array RequestHeader  -> Array RequestHeader
+addAccessTokenIfPresent :: Maybe AccessToken -> Array RequestHeader  -> Array RequestHeader
 addAccessTokenIfPresent Nothing            headers = headers
 addAccessTokenIfPresent (Just accessToken) headers = headers <> [authHeader accessToken]
 

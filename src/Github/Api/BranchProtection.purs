@@ -26,7 +26,7 @@ import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Effect.Exception (Error, message)
 import Foreign (F, MultipleErrors, Foreign)
-import Github.Api.Api (acceptHeader, api, authHeader, getStatusCode, requestCont)
+import Github.Api.Api (AccessToken, acceptHeader, api, authHeader, getStatusCode, requestCont)
 
 ---------------------------
 -- get Branch protection
@@ -34,7 +34,7 @@ import Github.Api.Api (acceptHeader, api, authHeader, getStatusCode, requestCont
 -- Githubs documentation: https://developer.github.com/v3/repos/branches/#get-branch-protection
 
 getBranchProtection
-  :: String -- Access token
+  :: AccessToken
   -> String -- Organization name
   -> String -- Repository name
   -> String -- Branch name
