@@ -23,11 +23,12 @@ import Data.Explain (class Explain, explain)
 import Data.HTTP.Method (Method(..))
 import Data.JSON.ParseForeign (class ParseForeign, parseForeign, readJSON)
 import Data.Maybe (Maybe)
-import Data.Newtype (class Newtype)
+import Data.Newtype (class Newtype, unwrap)
+import Data.Newtype (unwrap)
 import Effect.Exception (Error, message)
 import Foreign (F, MultipleErrors, Foreign)
 import Github.Api.Api (AccessToken, acceptHeader, api, authHeader, getStatusCode, requestCont)
-
+import Github.Entities (BranchName(..), OrgName(..), RepoName(..))
 ---------------------------
 -- get Branch protection
 ---------------------------
@@ -35,9 +36,9 @@ import Github.Api.Api (AccessToken, acceptHeader, api, authHeader, getStatusCode
 
 getBranchProtection
   :: AccessToken
-  -> String -- Organization name
-  -> String -- Repository name
-  -> String -- Branch name
+  -> OrgName
+  -> RepoName
+  -> BranchName
   -> Async (Either GetBranchProtectionErrors BranchProtection)
 getBranchProtection accessToken org repo branch =
   -- Request the url and transform both the error and the result
@@ -58,8 +59,9 @@ getBranchProtection accessToken org repo branch =
                             , responseFormat = ResponseFormat.string
                             }
 
-      endpointUrl :: String -> String -> String -> String
-      endpointUrl owner repo' branch' = api $ "repos/" <> owner <> "/" <> repo' <> "/branches/" <> branch' <> "/protection"
+      endpointUrl :: OrgName -> RepoName -> BranchName -> String
+      endpointUrl owner repo' branch'
+        = api $ "repos/" <> unwrap owner <> "/" <> unwrap repo' <> "/branches/" <> unwrap branch' <> "/protection"
 
       transformResponse :: Either Error (Response String) -> Either GetBranchProtectionErrors BranchProtection
       transformResponse (Left err)  = Left (InternalError' $ message err)
@@ -84,15 +86,18 @@ getBranchProtection accessToken org repo branch =
 
 data GetBranchProtectionErrors
   = InternalError' String
-  | BranchNotFound String String String
+  | BranchNotFound OrgName RepoName BranchName
   | GetBranchNotProtected
   | InvalidResponse' MultipleErrors
   | InvalidCredentials'
 
+branchURI :: OrgName -> RepoName -> BranchName -> String
+branchURI owner repo' branch' = "@" <> unwrap owner <> "/" <> unwrap repo' <> "#" <> unwrap branch'
+
 instance explainGetBranchProtectionErrors :: Explain GetBranchProtectionErrors where
   explain :: GetBranchProtectionErrors -> String
   explain (InternalError' str)    = "There was an internal error: " <> str
-  explain (BranchNotFound owner repo branch) = "The branch @" <> owner <> "/" <> repo <> "#" <> branch <> " is not found"
+  explain (BranchNotFound org repo branch) = "The branch " <> branchURI org repo branch <> " is not found"
   explain (GetBranchNotProtected) = "The branch is not protected"
   explain (InvalidResponse' err)  = "Github response doesn't match what we expected: " <> explain err
   explain InvalidCredentials'     = "The access token you provided is invalid or cancelled"

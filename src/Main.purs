@@ -11,14 +11,15 @@ import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Effect (Effect)
 import Effect.Console (log)
-import Github.Api.Api (AccessToken(..))
+import Github.Api.Api (AccessToken)
 import Github.Api.Repository (Repository, GetRepoErrors, getRepo)
+import Github.Entities (OrgName, RepoName)
 import Github.Settings.BranchProtection (BranchProtectionSettings)
 
 newtype Config = Config
   { githubToken  :: Maybe AccessToken
-  , organization :: String
-  , repository   :: String
+  , organization :: OrgName
+  , repository   :: RepoName
   , branchProtection :: BranchProtectionSettings
   }
 

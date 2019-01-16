@@ -18,12 +18,13 @@ import Data.Rules (Rules, boolRule, maybeRules, rule)
 import Foreign (F, Foreign)
 import Github.Api.Api (AccessToken(..))
 import Github.Api.BranchProtection (BranchProtection(..), GetBranchProtectionErrors(..), RequiredPullRequestReviews, RequiredStatusCheck, getBranchProtection)
+import Github.Entities (BranchName(..), OrgName(..), RepoName(..))
 
 getBranchProtectionSettings
-  :: AccessToken -- Access token
-  -> String -- Organization name
-  -> String -- Repository name
-  -> String -- Branch name
+  :: AccessToken
+  -> OrgName
+  -> RepoName
+  -> BranchName
   -> Async (Either GetBranchProtectionErrors BranchProtectionSettings) -- Probably create our own errors
 getBranchProtectionSettings accessToken org repo branch =
   -- Make the API call and interpret the response

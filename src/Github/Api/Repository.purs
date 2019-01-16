@@ -22,6 +22,7 @@ import Data.Newtype (class Newtype)
 import Effect.Exception (Error, message)
 import Foreign (MultipleErrors)
 import Github.Api.Api (AccessToken, addAccessTokenIfPresent, api, getStatusCode, requestCont, site)
+import Github.Entities (OrgName(..), RepoName(..))
 
 ---------------------------
 -- get Repository
@@ -30,8 +31,8 @@ import Github.Api.Api (AccessToken, addAccessTokenIfPresent, api, getStatusCode,
 
 getRepo
   :: Maybe AccessToken
-  -> String       -- Organization name
-  -> String       -- Repository name
+  -> OrgName      -- Organization name
+  -> RepoName       -- Repository name
   -> Async (Either GetRepoErrors Repository)
 getRepo maybeAccessToken org repo =
   -- Request the url and transform both the error and the result
@@ -43,8 +44,8 @@ getRepo maybeAccessToken org repo =
                             , method = Left GET
                             , responseFormat = ResponseFormat.string
                             }
-      apiRepoUrl :: String -> String -> String
-      apiRepoUrl owner repo' = api $ "repos/" <> owner <> "/" <> repo'
+      apiRepoUrl :: OrgName -> RepoName -> String
+      apiRepoUrl (OrgName owner) (RepoName repo') = api $ "repos/" <> owner <> "/" <> repo'
 
       transformResponse :: Either Error (Response String) -> Either GetRepoErrors Repository
       transformResponse (Left err)  = Left (InternalError $ message err)
@@ -58,12 +59,12 @@ getRepo maybeAccessToken org repo =
       interpretParsedResponse (Left err) = Left (InvalidResponse err)
       interpretParsedResponse (Right r) = Right r
 
-siteRepoUrl :: String -> String -> String
-siteRepoUrl owner repo' = site $ owner <> "/" <> repo'
+siteRepoUrl :: OrgName -> RepoName -> String
+siteRepoUrl (OrgName org) (RepoName repo') = site $ org <> "/" <> repo'
 
 data GetRepoErrors
   = InternalError String
-  | RepoNotFound String String -- org repo
+  | RepoNotFound OrgName RepoName
   | InvalidResponse MultipleErrors
   | InvalidCredentials
 
@@ -76,7 +77,7 @@ instance explainGetRepoErrors :: Explain GetRepoErrors where
 
 instance showGetRepoErrors :: Show GetRepoErrors  where
   show (InternalError e) = "(InternalError " <> e <> ")"
-  show (RepoNotFound org repo) = "(RepoNotFound @" <> org <> "/" <> repo <> ")"
+  show (RepoNotFound (OrgName org) (RepoName repo)) = "(RepoNotFound @" <> org <> "/" <> repo <> ")"
   show (InvalidResponse e) = "(InvalidResponse " <> show e <> ")"
   show InvalidCredentials = "InvalidCredentials"
 
