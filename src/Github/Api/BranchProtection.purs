@@ -10,42 +10,63 @@ module Github.Api.BranchProtection
   , Restrictions
   , User
   , Team
+  , BranchNotFoundImpl
+  , BranchNotProtectedImpl
+  , BranchNotFound
+  , BranchNotProtected
   )
 where
+
+-- Rename the module to Branches
 
 import Prelude
 
 import Affjax (Request, defaultRequest, Response)
 import Affjax.ResponseFormat as ResponseFormat
-import Control.Async (Async)
+import Control.Async (Async, throwErrorV)
 import Data.Either (Either(..))
-import Data.Explain (class Explain, explain)
+import Data.Explain (class Explain)
 import Data.HTTP.Method (Method(..))
-import Data.JSON.ParseForeign (class ParseForeign, parseForeign, readJSON)
+import Data.JSON.ParseForeign (class ParseForeign, parseForeign)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, unwrap)
-import Data.Newtype (unwrap)
-import Effect.Exception (Error, message)
-import Foreign (F, MultipleErrors, Foreign)
-import Github.Api.Api (AccessToken, acceptHeader, api, authHeader, getStatusCode, requestCont)
-import Github.Entities (BranchName(..), OrgName(..), RepoName(..))
----------------------------
--- get Branch protection
----------------------------
--- Githubs documentation: https://developer.github.com/v3/repos/branches/#get-branch-protection
+import Effect.Exception (error)
+import Foreign (F, Foreign)
+import Github.Api.Api (AccessToken, InvalidCredentials, InvalidResponse, RequestError, acceptHeader, api, authHeader, getStatusCode, invalidCredentials, parseResponse, request, requestInternalError)
+import Github.Entities (BranchName, OrgName, RepoName)
+import Type.Row (RowApply)
+import Data.Variant (SProxy(..), Variant, inj)
 
+-- Used to join error types together (unicode option+22C3)
+infixr 0 type RowApply as ⋃
+
+
+type GetBranchProtectionErrors e =
+  ( RequestError
+  ⋃ InvalidResponse
+  ⋃ InvalidCredentials
+  ⋃ BranchNotFound
+  ⋃ BranchNotProtected
+  ⋃ e
+  )
+
+-- Github documentation: https://developer.github.com/v3/repos/branches/#get-branch-protection
 getBranchProtection
-  :: AccessToken
+  :: ∀ e
+  .  AccessToken
   -> OrgName
   -> RepoName
   -> BranchName
-  -> Async (Either GetBranchProtectionErrors BranchProtection)
+  -> Async (GetBranchProtectionErrors e) BranchProtection
 getBranchProtection accessToken org repo branch =
-  -- Request the url and transform both the error and the result
-  transformResponse <$> requestCont req
+  -- Make the request and interpret the response
+  request req >>= transformResponse
     where
+      endpointUrl :: String
+      endpointUrl = api $ "repos/" <> unwrap org <> "/" <> unwrap repo <> "/branches/" <> unwrap branch <> "/protection"
+
       req :: Request String
-      req = defaultRequest  { url = (endpointUrl org repo branch)
+      req = defaultRequest  { url = endpointUrl
                             , headers =
                               [ authHeader accessToken
                               -- This header is here to get required_approving_review_count info
@@ -59,49 +80,21 @@ getBranchProtection accessToken org repo branch =
                             , responseFormat = ResponseFormat.string
                             }
 
-      endpointUrl :: OrgName -> RepoName -> BranchName -> String
-      endpointUrl owner repo' branch'
-        = api $ "repos/" <> unwrap owner <> "/" <> unwrap repo' <> "/branches/" <> unwrap branch' <> "/protection"
+      transformResponse :: Response String -> Async (GetBranchProtectionErrors e) BranchProtection
+      transformResponse res = case getStatusCode res.status of
+        200 -> parseResponse res.body
+        401 -> throwErrorV invalidCredentials
+        404 -> parseResponse res.body >>= interpret404Response
+        n   -> throwErrorV $ requestInternalError req $ error $ "Unexpected status code " <> show n
 
-      transformResponse :: Either Error (Response String) -> Either GetBranchProtectionErrors BranchProtection
-      transformResponse (Left err)  = Left (InternalError' $ message err)
-      transformResponse (Right val) = case getStatusCode val.status of
-        200 -> interpretParsedResponse (readJSON val.body)
-        401 -> Left InvalidCredentials'
-        404 -> interpret404Response (readJSON val.body)
-        n   -> Left (InternalError' $ "Unexpected status code " <> show n)
-
-      interpretParsedResponse :: Either MultipleErrors BranchProtection -> Either GetBranchProtectionErrors BranchProtection
-      interpretParsedResponse (Left err) = Left (InvalidResponse' err)
-      interpretParsedResponse (Right bp) = Right bp
-
-      interpret404Response :: Either MultipleErrors ApiError -> Either GetBranchProtectionErrors BranchProtection
-      interpret404Response (Left err) = Left (InvalidResponse' err)
-      interpret404Response (Right (ApiError r)) = case r.message of
-          "Branch not protected" -> Left GetBranchNotProtected
-          "Branch not found" -> Left (BranchNotFound org repo branch)
-          _ -> Left (InternalError' "invalid response")
+      interpret404Response :: ApiError -> Async (GetBranchProtectionErrors e) BranchProtection
+      interpret404Response (ApiError r) = case r.message of
+          "Branch not protected" -> throwErrorV branchNotProtected
+          "Branch not found" -> throwErrorV $ branchNotFound org repo branch
+          msg -> throwErrorV $ requestInternalError req $ error $ "invalid error message: " <> show msg
 
 
-
-data GetBranchProtectionErrors
-  = InternalError' String
-  | BranchNotFound OrgName RepoName BranchName
-  | GetBranchNotProtected
-  | InvalidResponse' MultipleErrors
-  | InvalidCredentials'
-
-branchURI :: OrgName -> RepoName -> BranchName -> String
-branchURI owner repo' branch' = "@" <> unwrap owner <> "/" <> unwrap repo' <> "#" <> unwrap branch'
-
-instance explainGetBranchProtectionErrors :: Explain GetBranchProtectionErrors where
-  explain :: GetBranchProtectionErrors -> String
-  explain (InternalError' str)    = "There was an internal error: " <> str
-  explain (BranchNotFound org repo branch) = "The branch " <> branchURI org repo branch <> " is not found"
-  explain (GetBranchNotProtected) = "The branch is not protected"
-  explain (InvalidResponse' err)  = "Github response doesn't match what we expected: " <> explain err
-  explain InvalidCredentials'     = "The access token you provided is invalid or cancelled"
-
+-- TODO: Rename to BranchProtectionResponse
 newtype BranchProtection = BranchProtection
   { url                           :: String
   , required_status_checks        :: Maybe RequiredStatusCheck
@@ -193,10 +186,38 @@ type Restrictions =
   , teams :: Array Team
   }
 
+-------------------------------------------------------------------------------
+-- ERRORS
+
+type BranchNotProtected ρ = (branchNotProtected ∷ BranchNotProtectedImpl | ρ)
+
+data BranchNotProtectedImpl = BranchNotProtectedImpl
+
+
+-- | Error constructors for the Variant BranchNotProtected
+branchNotProtected :: ∀ ρ. Variant (BranchNotProtected ⋃ ρ)
+branchNotProtected = inj (SProxy :: SProxy "branchNotProtected") (BranchNotProtectedImpl)
+-------------------------------------------------------------------------------
+
+type BranchNotFound ρ = (branchNotFound ∷ BranchNotFoundImpl | ρ)
+
+data BranchNotFoundImpl = BranchNotFoundImpl OrgName RepoName BranchName
+
+branchURI :: OrgName -> RepoName -> BranchName -> String
+branchURI owner repo' branch' = "@" <> unwrap owner <> "/" <> unwrap repo' <> "#" <> unwrap branch'
+
+instance explainBranchNotFoundImpl :: Explain BranchNotFoundImpl where
+  explain (BranchNotFoundImpl org repo branch) = "The branch " <> branchURI org repo branch <> " is not found"
+
+-- | Error constructors for the Variant BranchNotFound
+branchNotFound :: ∀ ρ. OrgName -> RepoName -> BranchName -> Variant (BranchNotFound ⋃ ρ)
+branchNotFound org repo branch = inj (SProxy :: SProxy "branchNotFound") (BranchNotFoundImpl org repo branch)
+-------------------------------------------------------------------------------
+
 -- ************
 -- * ApiError *
 -- ************
-
+-- TODO: Refactor and put in Api
 type ApiErrorData =
   { message           :: String
   , documentation_url :: String

@@ -2,18 +2,26 @@ module Poc where
 
 import Prelude
 
-import Control.Async (Async, ifItWorked, withError)
+import Control.Async (Async, runAsync)
+import Control.File (ReadJsonFileError )
 import Control.File as File
-import Control.Monad.Cont.Trans (runContT)
 import Data.Either (Either(..))
-import Data.Explain (class Explain, explain)
+import Data.Explain (explain)
+import Data.JSON.ParseForeign (class ParseForeign)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Effect (Effect)
 import Effect.Console (log)
 import Github.Api.Api (AccessToken)
-import Github.Api.Repository (Repository, GetRepoErrors, getRepo)
+import Github.Api.Repository (Repository, GetRepoError, getRepo)
 import Github.Entities (OrgName, RepoName)
+import Type.Row (RowApply)
+
+-- Used to join error types together (unicode option+22C3)
+infixr 0 type RowApply as ⋃
+
+-- Empty Set (unicode option+00D8)
+type Ø = ()
 
 newtype Config = Config
   { githubToken  :: Maybe AccessToken
@@ -22,40 +30,24 @@ newtype Config = Config
   }
 
 derive instance newtypeConfig :: Newtype Config _
+derive newtype instance parseForeignConfig :: ParseForeign Config
+derive newtype instance showConfig :: Show Config
 
-
-instance showConfig :: Show Config  where
-  show (Config c) = "{ githubToken: " <> (show (c.githubToken)) <> " }"
-
-readConfig :: String -> Async (Either File.ReadJsonError Config)
+readConfig :: ∀ e. String -> Async (ReadJsonFileError e) Config
 readConfig = File.readJsonFile
 
 
-data ProgramErrors
-  = ConfigError File.ReadJsonError
-  | GetRepositoryError GetRepoErrors
+type ProgramErrors = (ReadJsonFileError ⋃ GetRepoError ⋃ Ø)
 
-instance showProgramErrors :: Show ProgramErrors  where
-  show (ConfigError config) = "(ConfigError " <> show config <> ")"
-  show (GetRepositoryError error) = "(GetRepositoryError " <> show error <> ")"
-
-instance explainProgramErrors :: Explain ProgramErrors where
-  explain :: ProgramErrors -> String
-  explain (ConfigError err) = "There was an error while reading the configuration file: " <> explain err
-  explain (GetRepositoryError err) = "Error fetching the repository: " <> explain err
-
-
-program :: Async (Either ProgramErrors Repository)
+program :: Async ProgramErrors Repository
 program = do
-  -- maybeConfig :: Either ProgramErrors Config
-  maybeConfig <- readConfig "./poc-config.json" `withError` ConfigError
-  ifItWorked maybeConfig (\
-    (Config config) -> getRepo config.githubToken config.organization config.repository `withError` GetRepositoryError
-  )
+  config <- readConfig "./poc-config.json"
+  config # (\(Config c) -> getRepo c.githubToken c.organization c.repository)
+
 
 
 main :: Effect Unit
-main = runContT program resultCb where
+main = runAsync program resultCb where
   resultCb = (\m -> case m of
       Left err     -> log $ "Buu: " <> explain err
       Right result -> log $ "Yeay: " <> show result

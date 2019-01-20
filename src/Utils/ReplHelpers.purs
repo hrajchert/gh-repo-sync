@@ -5,28 +5,33 @@ module Utils.ReplHelpers
 where
 
 import Prelude
-import Control.Async (Async)
-import Control.Monad.Cont.Trans (runContT)
-import Effect (Effect)
-import Effect.Console (log)
+
+import Control.Async (Async, runAsync)
 import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
+import Data.Variant (Variant)
+import Effect (Effect)
+import Effect.Console (log)
 
 try
-  :: forall err ok. Explain err => Show ok
-  => Async (Either err ok)
+  :: ∀ e a
+  .  Show a
+  => Explain (Variant e)
+  => Async e a
   -> Effect Unit
-try program = runContT program resultCb where
+try program = runAsync program resultCb where
   resultCb = (\m -> case m of
-      Left err     -> log $ "Fail: " <> explain err
-      Right result -> log $ "Ok: "   <> show result
+      Left  err    -> log $ "Fail': " <> explain err
+      Right result -> log $ "Ok': "   <> show result
   )
 
+
 try'
-  :: forall err. Explain err
-  => Async (Either err String)
+  :: ∀ e
+  .  Explain (Variant e)
+  => Async e String
   -> Effect Unit
-try' program = runContT program resultCb where
+try' program = runAsync program resultCb where
   resultCb = (\m -> case m of
       Left err     -> log $ "Fail: " <> explain err
       Right result -> log $ "Ok: "   <> result
