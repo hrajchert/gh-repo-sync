@@ -7,7 +7,7 @@ import Control.File (ReadJsonFileError )
 import Control.File as File
 import Data.Either (Either(..))
 import Data.Explain (explain)
-import Data.JSON.ParseForeign (class ParseForeign)
+import Simple.JSON (class ReadForeign)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Effect (Effect)
@@ -30,7 +30,7 @@ newtype Config = Config
   }
 
 derive instance newtypeConfig :: Newtype Config _
-derive newtype instance parseForeignConfig :: ParseForeign Config
+derive newtype instance readForeignConfig :: ReadForeign Config
 derive newtype instance showConfig :: Show Config
 
 readConfig :: ∀ e. String -> Async (ReadJsonFileError e) Config

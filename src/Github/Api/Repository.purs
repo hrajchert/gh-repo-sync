@@ -18,7 +18,7 @@ import Control.Async (Async, throwErrorV)
 import Data.Either (Either(..))
 import Data.Explain (class Explain)
 import Data.HTTP.Method (Method(..))
-import Data.JSON.ParseForeign (class ParseForeign)
+import Simple.JSON (class ReadForeign)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, unwrap)
 import Github.Api.Api (AccessToken, InvalidCredentials, InvalidResponse, RequestError, addAccessTokenIfPresent, api, getStatusCode, invalidCredentials, parseResponse, request, requestInternalError, site)
@@ -153,7 +153,7 @@ newtype Repository = Repository
 
 derive instance newtypeRepository :: Newtype Repository _
 
-derive newtype instance parseForeignRepository :: ParseForeign Repository
+derive newtype instance readForeignRepository :: ReadForeign Repository
 
 instance showRepository :: Show Repository  where
   show (Repository c) = "(Repository " <> c.full_name <> ")"

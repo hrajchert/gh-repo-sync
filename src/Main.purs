@@ -7,7 +7,7 @@ import Control.File (JsonParseErrorImpl(..), ReadFileErrorImpl(..), ReadJsonFile
 import Control.File as File
 import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
-import Data.JSON.ParseForeign (class ParseForeign)
+import Simple.JSON (class ReadForeign)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Variant (SProxy(..), Variant, default, inj, onMatch)
@@ -36,8 +36,9 @@ newtype Config = Config
 
 derive instance newtypeConfig :: Newtype Config _
 
-derive newtype instance parseForeignConfig :: ParseForeign Config
+derive newtype instance readForeignConfig :: ReadForeign Config
 
+--
 type ReadConfigError ρ = (readConfigError ∷ ReadConfigErrorImpl ρ | ρ)
 
 _readConfigError :: SProxy "readConfigError"
@@ -69,6 +70,8 @@ groupByReadConfigError = onMatch
   { readFileError: readConfigError <<< inj _readFileError
   , readFileJsonParseError: readConfigError <<< inj _readFileJsonParseError
   } identity
+--
+
 
 readConfig :: ∀ e. String -> Async (ReadConfigError e) Config
 readConfig path = File.readJsonFile path `mapExceptT'` groupByReadConfigError
