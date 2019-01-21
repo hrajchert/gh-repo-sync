@@ -4,7 +4,7 @@ import Prelude
 
 import Effect (Effect)
 import Test.Data.ExplainSpec (explainSpec)
-import Test.Data.JSON.ParseForeignSpec (parseForeignSpec)
+import Test.Data.JSON.ReadForeignSpec (parseForeignSpec)
 import Test.Spec (describe)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (run)

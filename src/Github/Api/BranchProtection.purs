@@ -27,7 +27,7 @@ import Control.Async (Async, throwErrorV)
 import Data.Either (Either(..))
 import Data.Explain (class Explain)
 import Data.HTTP.Method (Method(..))
-import Data.JSON.ParseForeign (class ParseForeign, parseForeign)
+import Simple.JSON (class ReadForeign, readImpl)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, unwrap)
 import Effect.Exception (error)
@@ -106,7 +106,7 @@ newtype BranchProtection = BranchProtection
 
 derive instance newtypeBranchProtection :: Newtype BranchProtection _
 
-derive newtype instance parseForeignBranchProtection :: ParseForeign BranchProtection
+derive newtype instance readForeignBranchProtection :: ReadForeign BranchProtection
 
 instance showBranchProtection :: Show BranchProtection  where
   show (BranchProtection c) = "(BranchProtection " <> c.url <> ")"
@@ -223,11 +223,11 @@ type ApiErrorData =
   , documentation_url :: String
   }
 
-parseApiErrorData :: Foreign -> F ApiErrorData
-parseApiErrorData = parseForeign
+readApiErrorData :: Foreign -> F ApiErrorData
+readApiErrorData = readImpl
 
-instance parseForeignApiError :: ParseForeign ApiError where
-  parseForeign f = ApiError <$> parseApiErrorData f
+instance readForeignApiError :: ReadForeign ApiError where
+  readImpl f = ApiError <$> readApiErrorData f
 
 newtype ApiError = ApiError ApiErrorData
 

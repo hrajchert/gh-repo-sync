@@ -18,9 +18,9 @@ import Control.Async (Async, mapExceptT')
 import Control.Monad.Cont.Trans (ContT(..))
 import Control.Monad.Except (ExceptT(..), except)
 import Data.Bifunctor (lmap)
-import Data.Either (Either)
 import Data.Explain (class Explain, explain)
-import Data.JSON.ParseForeign (class ParseForeign, readJSON)
+import Data.Either (Either)
+import Simple.JSON (class ReadForeign, readJSON)
 import Data.List.Types (NonEmptyList)
 import Data.Variant (SProxy(..), Variant, inj)
 import Effect.Class (liftEffect)
@@ -65,7 +65,7 @@ type ReadJsonFileError ρ = (ReadFileError ⋃ JsonParseError ⋃ ρ)
 
 readJsonFile ::
   ∀  ρ a
-  .  ParseForeign a
+  .  ReadForeign a
   => String
   -> Async (ReadJsonFileError ρ) a
 readJsonFile path = do

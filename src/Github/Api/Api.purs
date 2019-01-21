@@ -28,20 +28,20 @@ import Affjax.RequestHeader (RequestHeader(..))
 import Affjax.ResponseFormat (ResponseFormatError)
 import Affjax.StatusCode (StatusCode(..))
 import Control.Async (Async, mapExceptT', throwErrorV)
+import Control.Monad.Cont (ContT(ContT))
+import Control.Monad.Except (ExceptT(..), except)
 import Control.Monad.Trans.Class (lift)
 import Data.Bifunctor (lmap)
-import Control.Monad.Cont (ContT(ContT))
 import Data.Either (Either(..))
+import Data.Explain (class Explain, explain)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
+import Data.Variant (Variant, inj, SProxy(..))
 import Effect (Effect)
 import Effect.Aff (runAff_, Aff)
-import Control.Monad.Except (ExceptT(..), except)
 import Effect.Exception (Error, message)
-import Data.Variant (Variant, inj, SProxy(..))
-import Data.Explain (class Explain, explain)
-import Data.JSON.ParseForeign (class ParseForeign, readJSON)
 import Foreign (MultipleErrors)
+import Simple.JSON (class ReadForeign, readJSON)
 import Type.Row (RowApply)
 
 -- Used to join error types together (unicode option+22C3)
@@ -88,7 +88,7 @@ newtype AccessToken = AccessToken String
 
 -- Instances for parsing with SimpleJSON
 derive instance newtypeAccessToken :: Newtype AccessToken _
-derive newtype instance parseForeignAccessToken :: ParseForeign AccessToken
+derive newtype instance readForeignAccessToken :: ReadForeign AccessToken
 
 instance showAccessToken :: Show AccessToken where
   show _ = "<access-token>"
@@ -157,7 +157,7 @@ instance explainInvalidResponse :: Explain InvalidResponseImpl where
 invalidResponse :: ∀ ρ. MultipleErrors -> Variant (InvalidResponse ⋃ ρ)
 invalidResponse err = inj (SProxy :: SProxy "invalidResponse") (InvalidResponseImpl err)
 
-parseResponse :: ∀ a ρ. ParseForeign a => String -> Async (InvalidResponse ρ) a
+parseResponse :: ∀ a ρ. ReadForeign a => String -> Async (InvalidResponse ρ) a
 parseResponse str = except parsedJSON where
     -- Parse the JSON and convert the error
     parsedJSON = readJSON str # lmap invalidResponse

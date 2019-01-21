@@ -4,6 +4,7 @@ module Github.Settings.BranchProtection
   , PullRequestReviewSettings
   , StatusChecksSettings
   , getBranchProtectionSettings
+  , GetBPSettingsErrors
   )
 where
 
@@ -13,7 +14,7 @@ import Control.Async (Async)
 import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
 import Control.Monad.Except.Checked (handleError)
-import Data.JSON.ParseForeign (class ParseForeign, parseForeign)
+import Simple.JSON (class ReadForeign, readImpl)
 import Data.Maybe (Maybe(..))
 import Data.Rules (Rules, boolRule, maybeRules, rule)
 import Foreign (F, Foreign)
@@ -83,17 +84,13 @@ type StatusChecksSettings =
   , checks           :: Array String
   }
 
-instance showBranchSettings :: Show BranchProtectionSettings where
-  show BranchNotProtected  = "(BranchNotProtected)"
-  show (ProtectedBranch s) = "(ProtectedBranch admin = " <> show s.includeAdministrators <> ")"
-
-instance parseForeignBranchSettings :: ParseForeign BranchProtectionSettings where
-  parseForeign :: Foreign -> F BranchProtectionSettings
-  parseForeign f =
+instance readForeignBranchSettings :: ReadForeign BranchProtectionSettings where
+  readImpl :: Foreign -> F BranchProtectionSettings
+  readImpl f =
     interpret <$> parsedSettings
       where
         parsedSettings :: F (Maybe ProtectedBranchSettings)
-        parsedSettings = parseForeign f
+        parsedSettings = readImpl f
 
         interpret :: Maybe ProtectedBranchSettings -> BranchProtectionSettings
         interpret (Just settings) = ProtectedBranch settings
