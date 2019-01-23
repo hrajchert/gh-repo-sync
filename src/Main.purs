@@ -50,8 +50,8 @@ type ProgramErrors = (ReadJsonFileError ⋃ GetRepoError ⋃ Ø)
 
 program :: Async ProgramErrors Repository
 program = do
-  config <- readConfig "./config.json"
-  config # (\(Config c) -> getRepo c.githubToken c.organization c.repository)
+  Config c <- readConfig "./config.json"
+  getRepo c.githubToken c.organization c.repository
 
 
 main :: Effect Unit
