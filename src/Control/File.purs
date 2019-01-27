@@ -2,11 +2,13 @@ module Control.File
   ( readJsonFile
   , readFile
   , readTextFile
+  , _readFileError
+  , _readFileJsonParseError
   , ReadJsonFileError
   , ReadFileError
-  , ReadFileErrorImpl
+  , ReadFileErrorImpl (..)
   , JsonParseError
-  , JsonParseErrorImpl
+  , JsonParseErrorImpl (..)
   )
 where
 
@@ -14,21 +16,23 @@ import Prelude
 
 import Control.Async (Async, mapExceptT')
 import Control.Monad.Cont.Trans (ContT(..))
-import Data.Bifunctor (lmap)
 import Control.Monad.Except (ExceptT(..), except)
+import Data.Bifunctor (lmap)
+import Data.Either (Either)
 import Data.Explain (class Explain, explain)
 import Data.Either (Either)
 import Data.JSON.ParseForeign (class ParseForeign, readJSON)
 import Data.List.Types (NonEmptyList)
 import Data.Variant (SProxy(..), Variant, inj)
 import Effect.Class (liftEffect)
-import Effect.Exception (Error)
+import Effect.Exception (Error, message)
 import Foreign (ForeignError)
 import Node.Buffer (Buffer, toString)
 import Node.Encoding (Encoding(..))
 import Node.FS.Async as FS
+import Node.Path (FilePath)
+import Type.Data.Boolean (kind Boolean)
 import Type.Row (RowApply)
-
 infixr 0 type RowApply as ⋃
 
 -------------------------------------------------------------------------------
@@ -46,6 +50,7 @@ readTextFile ::
 readTextFile path = (readFile path) >>= toString' where
   toString' :: forall e. Buffer -> Async e String
   toString' buff = liftEffect $ toString UTF8 buff
+
 
 
 -- -- TODO: Thinking of putting this into a ForeignHelper
@@ -82,6 +87,9 @@ readJsonFile path = do
 -- | Thrown when a readFile was unsuccesful
 type ReadFileError ρ = (readFileError ∷ ReadFileErrorImpl | ρ)
 
+_readFileError :: SProxy "readFileError"
+_readFileError = SProxy
+
 newtype ReadFileErrorImpl
   = ReadFileErrorImpl
     { path  :: String
@@ -89,24 +97,29 @@ newtype ReadFileErrorImpl
     }
 
 instance explainReadFileError :: Explain ReadFileErrorImpl where
-  explain (ReadFileErrorImpl {path, error}) = "Could not read file \"" <> path <> "\""
+  explain (ReadFileErrorImpl {path, error}) = "Could not read file \"" <> path <> "\"" <> message error
 
 readFileError :: ∀ ρ. String -> Error -> Variant (ReadFileError ρ)
-readFileError path error = inj (SProxy :: SProxy "readFileError") (ReadFileErrorImpl { path, error })
+readFileError path error = inj _readFileError (ReadFileErrorImpl { path, error })
+
+---------------------------------------
 
 -- | Thrown when parsing a file as JSON
 type JsonParseError ρ = (readFileJsonParseError ∷ JsonParseErrorImpl | ρ)
 
+-- TODO: unify into either jsonParseError or readFileJsonParseError
+_readFileJsonParseError :: SProxy "readFileJsonParseError"
+_readFileJsonParseError = SProxy
+
 newtype JsonParseErrorImpl
   = JsonParseErrorImpl
-    { path  :: String
+    { path  :: FilePath
     , error :: NonEmptyList ForeignError
     }
 
 instance explainJsonParseError :: Explain JsonParseErrorImpl where
   explain (JsonParseErrorImpl {path, error}) = "There was a problem parsing the json file " <> show path <> ":" <> explain error
 
-jsonParseError :: ∀ ρ. String -> NonEmptyList ForeignError -> Variant (JsonParseError ρ)
-jsonParseError path error = inj (SProxy :: SProxy "readFileJsonParseError") (JsonParseErrorImpl { path, error })
-
+jsonParseError :: ∀ ρ. FilePath -> NonEmptyList ForeignError -> Variant (JsonParseError ρ)
+jsonParseError path error = inj _readFileJsonParseError (JsonParseErrorImpl { path, error })
 
