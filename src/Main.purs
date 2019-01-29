@@ -9,7 +9,7 @@ import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
 import Data.JSON.ParseForeign (class ParseForeign)
 import Data.Maybe (Maybe)
-import Data.Newtype (class Newtype)
+import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Variant (SProxy(..), Variant, default, inj, onMatch)
 import Effect (Effect)
 import Effect.Console (log)
@@ -18,10 +18,10 @@ import Github.Api.Api (AccessToken)
 import Github.Api.Repository (Repository, GetRepoError, getRepo)
 import Github.Entities (OrgName, RepoName)
 import Github.Settings.BranchProtection (BranchProtectionSettings)
-import Type.Row (RowApply)
+import Type.Row as R
 
 -- Used to join error types together (unicode option+22C3)
-infixr 0 type RowApply as ⋃
+infixr 0 type R.RowApply as ⋃
 
 -- Empty Set (unicode option+00D8)
 type Ø = ()
@@ -40,12 +40,19 @@ derive newtype instance parseForeignConfig :: ParseForeign Config
 
 type ReadConfigError ρ = (readConfigError ∷ ReadConfigErrorImpl ρ | ρ)
 
+_readConfigError :: SProxy "readConfigError"
+_readConfigError = SProxy
+
+readConfigError :: ∀ ρ. Variant (ReadJsonFileError ρ) -> Variant (ReadConfigError ρ)
+readConfigError = inj _readConfigError <<< wrap
+
 newtype ReadConfigErrorImpl e
   = ReadConfigErrorImpl (Variant (ReadJsonFileError e))
 
+derive instance newtypeReadConfigErrorImpl :: Newtype (ReadConfigErrorImpl e) _
+
 instance explainReadConfigError :: Explain (ReadConfigErrorImpl e) where
-  explain (ReadConfigErrorImpl err) = explain' err where
-    explain'
+  explain err
       = default "Unknown problem"
       # onMatch
         { readFileError: \(ReadFileErrorImpl {error})
@@ -53,12 +60,11 @@ instance explainReadConfigError :: Explain (ReadConfigErrorImpl e) where
         , readFileJsonParseError: \(JsonParseErrorImpl {path, error})
             -> "There was a problem parsing the config file '" <> path <>"':"<> explain error
         }
+      $ unwrap err
 
 
-readConfigError :: ∀ ρ. Variant (ReadJsonFileError ρ) -> Variant (ReadConfigError ρ)
-readConfigError error = inj (SProxy :: SProxy "readConfigError") (ReadConfigErrorImpl error)
 
-groupByReadConfigError :: forall e. Variant (ReadJsonFileError ⋃ ReadConfigError e) -> Variant (ReadConfigError e)
+groupByReadConfigError :: ∀ e. Variant (ReadJsonFileError ⋃ ReadConfigError ⋃ e) -> Variant (ReadConfigError ⋃ e)
 groupByReadConfigError = onMatch
   { readFileError: readConfigError <<< inj _readFileError
   , readFileJsonParseError: readConfigError <<< inj _readFileJsonParseError
