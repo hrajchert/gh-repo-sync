@@ -25,7 +25,7 @@ instance explainString :: Explain String where
   explain str = str
 
 -------------------------------------------------------------------------------
-explainFoldable :: forall f a. Foldable f => Explain a => f a -> String
+explainFoldable :: ∀ f a. Foldable f => Explain a => f a -> String
 explainFoldable list = foldl explainItem "" list where
   explainItem :: String -> a -> String
   explainItem accu a = accu <> "\n    * " <> explain a -- capitalize (explain a)

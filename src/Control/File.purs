@@ -20,7 +20,6 @@ import Control.Monad.Except (ExceptT(..), except)
 import Data.Bifunctor (lmap)
 import Data.Either (Either)
 import Data.Explain (class Explain, explain)
-import Data.Either (Either)
 import Data.JSON.ParseForeign (class ParseForeign, readJSON)
 import Data.List.Types (NonEmptyList)
 import Data.Variant (SProxy(..), Variant, inj)
@@ -48,7 +47,7 @@ readTextFile ::
   .  String
   -> Async (ReadFileError ρ) String
 readTextFile path = (readFile path) >>= toString' where
-  toString' :: forall e. Buffer -> Async e String
+  toString' :: ∀ e. Buffer -> Async e String
   toString' buff = liftEffect $ toString UTF8 buff
 
 

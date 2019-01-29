@@ -72,7 +72,7 @@ throwErrorV = ExceptT.throwError
 -- | Maps the error of a Monad Stack that includes the ExceptT Transformer.
 -- | It's a helper around mapExceptT, to only concentrate about mapping the error.
 -- | I'm not sure if this function should reside here.
-mapExceptT' :: forall e e' a m
+mapExceptT' :: ∀ e e' a m
   . Functor m
   =>  ExceptT e m a
   -> (e -> e')

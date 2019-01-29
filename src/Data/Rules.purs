@@ -13,7 +13,7 @@ boolRule :: String -> Boolean -> Rules
 boolRule _   false = []
 boolRule str true  = [str]
 
-maybeRules :: forall a. (a -> Rules) -> Maybe a -> Rules
+maybeRules :: ∀ a. (a -> Rules) -> Maybe a -> Rules
 maybeRules _ (Nothing) = []
 maybeRules f (Just a) = f a
 
