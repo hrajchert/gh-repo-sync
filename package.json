@@ -17,7 +17,7 @@
     "start": "node bin/gh-repo-sync",
     "start-dev": "pulp -w run",
     "tdd": "pulp -w test",
-    "build": "pulp build",
+    "build": "pulp build -- -g sourcemaps",
     "test": "pulp test"
   },
   "keywords": [
