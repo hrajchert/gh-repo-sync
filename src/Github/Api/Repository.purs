@@ -4,7 +4,9 @@ module Github.Api.Repository
   , RepositoryPermissions
   , Organization
   , getRepo
-  , GetRepoErrors (..)
+  , GetRepoError (..)
+  , RepoNotFound
+  , RepoNotFoundImpl
   )
 where
 
@@ -12,74 +14,61 @@ import Prelude
 
 import Affjax (Request, defaultRequest, Response)
 import Affjax.ResponseFormat as ResponseFormat
-import Control.Async (Async)
+import Control.Async (Async, throwErrorV)
 import Data.Either (Either(..))
-import Data.Explain (class Explain, explain)
+import Data.Explain (class Explain)
 import Data.HTTP.Method (Method(..))
-import Data.JSON.ParseForeign (class ParseForeign, readJSON)
+import Data.JSON.ParseForeign (class ParseForeign)
 import Data.Maybe (Maybe)
-import Data.Newtype (class Newtype)
-import Effect.Exception (Error, message)
-import Foreign (MultipleErrors)
-import Github.Api.Api (AccessToken, addAccessTokenIfPresent, api, getStatusCode, requestCont, site)
+import Data.Newtype (class Newtype, unwrap)
+import Github.Api.Api (AccessToken, InvalidCredentials, InvalidResponse, RequestError, addAccessTokenIfPresent, api, getStatusCode, invalidCredentials, parseResponse, request, requestInternalError, site)
+import Effect.Exception (error)
 import Github.Entities (OrgName(..), RepoName(..))
+import Type.Row (RowApply)
+import Data.Variant (Variant, inj, SProxy(..))
 
----------------------------
--- get Repository
----------------------------
+-- Used to join error types together (unicode option+22C3)
+infixr 0 type RowApply as ⋃
+
+-------------------------------------------------------------------------------
 -- Githubs documentation https://developer.github.com/v3/repos/#get
 
+-- TODO: Maybe groupBy into a context object
+type GetRepoError e =
+  ( RequestError
+  ⋃ InvalidResponse
+  ⋃ InvalidCredentials
+  ⋃ RepoNotFound
+  ⋃ e
+  )
+
 getRepo
-  :: Maybe AccessToken
-  -> OrgName      -- Organization name
-  -> RepoName       -- Repository name
-  -> Async (Either GetRepoErrors Repository)
+  :: ∀ e
+  .  Maybe AccessToken
+  -> OrgName
+  -> RepoName
+  -> Async (GetRepoError e) Repository
 getRepo maybeAccessToken org repo =
-  -- Request the url and transform both the error and the result
-  transformResponse <$> requestCont req
+  -- Make the request and interpret the response
+  request req >>= transformResponse
     where
+      endpointUrl :: String
+      endpointUrl = api $ "repos/" <> unwrap org <> "/" <> unwrap repo
+
       req :: Request String
-      req = defaultRequest  { url = (apiRepoUrl org repo)
+      req = defaultRequest  { url = endpointUrl
                             , headers = addAccessTokenIfPresent maybeAccessToken []
                             , method = Left GET
                             , responseFormat = ResponseFormat.string
                             }
-      apiRepoUrl :: OrgName -> RepoName -> String
-      apiRepoUrl (OrgName owner) (RepoName repo') = api $ "repos/" <> owner <> "/" <> repo'
 
-      transformResponse :: Either Error (Response String) -> Either GetRepoErrors Repository
-      transformResponse (Left err)  = Left (InternalError $ message err)
-      transformResponse (Right val) = case getStatusCode val.status of
-        200 -> interpretParsedResponse (readJSON val.body)
-        401 -> Left InvalidCredentials
-        404 -> Left (RepoNotFound org repo)
-        n   -> Left (InternalError $ "Unexpected status code " <> show n)
+      transformResponse :: Response String -> Async (GetRepoError e) Repository
+      transformResponse res = case getStatusCode res.status of
+        200 -> parseResponse res.body
+        401 -> throwErrorV invalidCredentials
+        404 -> throwErrorV $ repoNotFound org repo
+        n   -> throwErrorV $ requestInternalError req $ error $ "Unexpected status code " <> show n
 
-      interpretParsedResponse :: Either MultipleErrors Repository -> Either GetRepoErrors Repository
-      interpretParsedResponse (Left err) = Left (InvalidResponse err)
-      interpretParsedResponse (Right r) = Right r
-
-siteRepoUrl :: OrgName -> RepoName -> String
-siteRepoUrl (OrgName org) (RepoName repo') = site $ org <> "/" <> repo'
-
-data GetRepoErrors
-  = InternalError String
-  | RepoNotFound OrgName RepoName
-  | InvalidResponse MultipleErrors
-  | InvalidCredentials
-
-instance explainGetRepoErrors :: Explain GetRepoErrors where
-  explain :: GetRepoErrors -> String
-  explain (InternalError str)    = "There was an internal error: " <> str
-  explain (RepoNotFound org repo) = "The repository (" <> siteRepoUrl org repo <> ") is not found, maybe it's private?"
-  explain (InvalidResponse err)  = "Github response doesn't match what we expected: " <> explain err
-  explain InvalidCredentials     = "The access token you provided is invalid or cancelled"
-
-instance showGetRepoErrors :: Show GetRepoErrors  where
-  show (InternalError e) = "(InternalError " <> e <> ")"
-  show (RepoNotFound (OrgName org) (RepoName repo)) = "(RepoNotFound @" <> org <> "/" <> repo <> ")"
-  show (InvalidResponse e) = "(InvalidResponse " <> show e <> ")"
-  show InvalidCredentials = "InvalidCredentials"
 
 newtype Repository = Repository
   { id                  :: Int
@@ -221,3 +210,20 @@ type Organization =
   , type                :: String
   , site_admin          :: Boolean
   }
+
+-------------------------------------------------------------------------------
+-- ERRORS
+
+type RepoNotFound ρ = (repoNotFound ∷ RepoNotFoundImpl | ρ)
+
+data RepoNotFoundImpl = RepoNotFoundImpl OrgName RepoName
+
+siteRepoUrl :: OrgName -> RepoName -> String
+siteRepoUrl (OrgName org) (RepoName repo') = site $ org <> "/" <> repo'
+
+instance explainRepoNotFoundImpl :: Explain RepoNotFoundImpl where
+  explain (RepoNotFoundImpl org repo) = "The repository (" <> siteRepoUrl org repo <> ") is not found, maybe it's private?"
+
+-- | Error constructors for the Variant RepoNotFound
+repoNotFound :: ∀ ρ. OrgName -> RepoName -> Variant (RepoNotFound ⋃ ρ)
+repoNotFound org repo = inj (SProxy :: SProxy "repoNotFound") (RepoNotFoundImpl org repo)

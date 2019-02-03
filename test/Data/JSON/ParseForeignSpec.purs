@@ -13,7 +13,7 @@ import Test.Spec.Assertions (shouldEqual)
 
 
 -- Helper function to ease comparison
-multipleErrors :: forall a. Array ForeignError -> Either (NonEmptyList ForeignError) a
+multipleErrors :: ∀ a. Array ForeignError -> Either (NonEmptyList ForeignError) a
 multipleErrors errs = case fromFoldable errs of
   Just list -> Left list
   Nothing   -> Left $ singleton $ ForeignError "The test data needs to have at least one error"

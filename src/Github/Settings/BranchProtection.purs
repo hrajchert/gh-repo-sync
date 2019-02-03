@@ -12,67 +12,51 @@ import Prelude
 import Control.Async (Async)
 import Data.Either (Either(..))
 import Data.Explain (class Explain, explain)
+import Control.Monad.Except.Checked (handleError)
 import Data.JSON.ParseForeign (class ParseForeign, parseForeign)
 import Data.Maybe (Maybe(..))
 import Data.Rules (Rules, boolRule, maybeRules, rule)
 import Foreign (F, Foreign)
-import Github.Api.Api (AccessToken(..))
-import Github.Api.BranchProtection (BranchProtection(..), GetBranchProtectionErrors(..), RequiredPullRequestReviews, RequiredStatusCheck, getBranchProtection)
-import Github.Entities (BranchName(..), OrgName(..), RepoName(..))
+import Github.Api.BranchProtection (BranchNotFound, BranchNotProtectedImpl, BranchProtection(..), RequiredPullRequestReviews, RequiredStatusCheck, getBranchProtection)
+import Github.Entities (BranchName, OrgName, RepoName)
+import Github.Api.Api (AccessToken, InvalidCredentials, InvalidResponse, RequestError)
+import Type.Row (RowApply)
+import Control.Monad.Trans.Class (lift)
+
+-- Used to join error types together (unicode option+22C3)
+infixr 0 type RowApply as ⋃
+
+-- TODO: probably groupBy into a specific error with a closed set
+type GetBPSettingsErrors e =
+  ( RequestError
+  ⋃ InvalidResponse
+  ⋃ InvalidCredentials
+  ⋃ BranchNotFound
+  ⋃ e
+  )
 
 getBranchProtectionSettings
-  :: AccessToken
+  :: ∀ e
+  .  AccessToken
   -> OrgName
   -> RepoName
   -> BranchName
-  -> Async (Either GetBranchProtectionErrors BranchProtectionSettings) -- Probably create our own errors
+  -> Async (GetBPSettingsErrors e) BranchProtectionSettings
 getBranchProtectionSettings accessToken org repo branch =
   -- Make the API call and interpret the response
-  interpretResponse <$> getBranchProtection accessToken org repo branch
+  asyncWithError >>= interpretResponse
     where
-      interpretResponse :: Either GetBranchProtectionErrors BranchProtection -> Either GetBranchProtectionErrors BranchProtectionSettings
-      interpretResponse (Left GetBranchNotProtected) = pure BranchNotProtected
-      interpretResponse (Left error) = Left error
-      interpretResponse (Right (BranchProtection
-                                  { required_pull_request_reviews: maybePR
-                                  , required_status_checks: maybeSC
-                                  , required_signatures
-                                  , enforce_admins
-                                  }
-                                )
-                        ) = pure $ ProtectedBranch
-                                    { pullRequestReview    : interpretPullRequestReview maybePR
-                                    , statusChecks         : interpretStatusCheck maybeSC
-                                    , requireSignedCommits : required_signatures.enabled
-                                    , includeAdministrators: enforce_admins.enabled
-                                    }
+      asyncWithError :: Async (GetBPSettingsErrors e) (Either BranchNotProtectedImpl BranchProtection)
+      asyncWithError = getBranchProtection accessToken org repo branch
+                              -- If it succeeded, treat it as a right value
+                           <#> Right
+                              -- If it failed with "branchNotProtected", treat it as a left
+                            #  handleError {branchNotProtected: (lift <<< pure <<< Left)}
 
+      interpretResponse :: Either BranchNotProtectedImpl BranchProtection -> Async (GetBPSettingsErrors e) BranchProtectionSettings
+      interpretResponse (Left _)   = lift $ pure BranchNotProtected
+      interpretResponse (Right bp) = lift $ pure $ fromBranchProtectionResponse bp
 
-      interpretPullRequestReview :: Maybe RequiredPullRequestReviews -> Maybe PullRequestReviewSettings
-      interpretPullRequestReview Nothing = Nothing
-      interpretPullRequestReview
-          (Just
-            { required_approving_review_count: requiredApprovingReviews
-            , dismiss_stale_reviews: dismissStale
-            , require_code_owner_reviews: requireReviewFromOwner
-            }
-          ) = Just
-                { requiredApprovingReviews
-                , dismissStale
-                , requireReviewFromOwner
-                }
-
-      interpretStatusCheck :: Maybe RequiredStatusCheck -> Maybe StatusChecksSettings
-      interpretStatusCheck Nothing = Nothing
-      interpretStatusCheck
-        (Just
-          { strict: requireUpToDate
-          , contexts: checks
-          }
-        ) = Just
-              { requireUpToDate
-              , checks
-              }
 
 -- | Data structure that models the settings in this page
 -- | https://github.com/<owner>/<repo>/settings/branches/<branch>
@@ -120,6 +104,51 @@ instance explainBranchSettings :: Explain BranchProtectionSettings where
   explain :: BranchProtectionSettings -> String
   explain BranchNotProtected = "The branch is not protected"
   explain (ProtectedBranch settings) = "The branch is protected in the following way: " <> (explain $ protectedBranchRules settings)
+
+fromBranchProtectionResponse :: BranchProtection -> BranchProtectionSettings
+fromBranchProtectionResponse
+    (BranchProtection
+      { required_pull_request_reviews: maybePR
+      , required_status_checks: maybeSC
+      , required_signatures
+      , enforce_admins
+      }
+    ) = ProtectedBranch
+          { pullRequestReview    : interpretPullRequestReview maybePR
+          , statusChecks         : interpretStatusCheck maybeSC
+          , requireSignedCommits : required_signatures.enabled
+          , includeAdministrators: enforce_admins.enabled
+          }
+
+
+interpretPullRequestReview :: Maybe RequiredPullRequestReviews -> Maybe PullRequestReviewSettings
+interpretPullRequestReview Nothing = Nothing
+interpretPullRequestReview
+    (Just
+      { required_approving_review_count: requiredApprovingReviews
+      , dismiss_stale_reviews: dismissStale
+      , require_code_owner_reviews: requireReviewFromOwner
+      }
+    ) = Just
+          { requiredApprovingReviews
+          , dismissStale
+          , requireReviewFromOwner
+          }
+
+interpretStatusCheck :: Maybe RequiredStatusCheck -> Maybe StatusChecksSettings
+interpretStatusCheck Nothing = Nothing
+interpretStatusCheck
+  (Just
+    { strict: requireUpToDate
+    , contexts: checks
+    }
+  ) = Just
+        { requireUpToDate
+        , checks
+        }
+
+-------------------------------------------------------------------------------
+-- RULES
 
 protectedBranchRules :: ProtectedBranchSettings -> Rules
 protectedBranchRules { pullRequestReview         -- :: Maybe PullRequestReviewSettings

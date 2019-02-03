@@ -1,28 +1,67 @@
 module Data.Explain
   ( class Explain
   , explain
-  ) where
+  , class VariantExplains
+  , variantExplains
+  )
+where
 
 
-import Data.Explain (class Explain, explain)
 import Data.Foldable (foldl, class Foldable)
-import Foreign (ForeignError(TypeMismatch, ErrorAtProperty, ErrorAtIndex, ForeignError))
+import Data.List as L
+import Foreign (ForeignError(..))
+import Data.List.Types (NonEmptyList)
+import Data.Variant (Variant)
+import Data.Variant.Internal (class VariantTags, RLProxy(..), VariantCase, VariantRep(..), lookup, variantTags)
 import Prelude (show, (<>))
-import Utils.String (capitalize)
+import Type.Row as R
+import Unsafe.Coerce (unsafeCoerce)
 
 class Explain a where
   explain :: a -> String
 
-
+-------------------------------------------------------------------------------
 instance explainString :: Explain String where
   explain str = str
 
-instance explainFoldable :: (Foldable f, Explain a) => Explain (f a) where
-  explain :: forall f a. Foldable f => Explain a => f a -> String
-  explain list = foldl explainItem "" list where
-    explainItem :: String -> a -> String
-    explainItem accu a = accu <> "\n    * " <> capitalize (explain a)
+-------------------------------------------------------------------------------
+explainFoldable :: ∀ f a. Foldable f => Explain a => f a -> String
+explainFoldable list = foldl explainItem "" list where
+  explainItem :: String -> a -> String
+  explainItem accu a = accu <> "\n    * " <> explain a -- capitalize (explain a)
 
+instance explainNonEmptyList :: Explain a => Explain (NonEmptyList a) where
+  explain = explainFoldable
+
+instance explainArray :: Explain a => Explain (Array a) where
+  explain = explainFoldable
+
+-------------------------------------------------------------------------------
+class VariantExplains (rl ∷ R.RowList) where
+  variantExplains ∷ RLProxy rl → L.List (VariantCase → String)
+
+instance showVariantNil ∷ VariantExplains R.Nil where
+  variantExplains _ = L.Nil
+
+instance explainVariantCons ∷ (VariantExplains rs, Explain a) ⇒ VariantExplains (R.Cons sym a rs) where
+  variantExplains _ =
+    L.Cons (coerceExplain explain) (variantExplains (RLProxy ∷ RLProxy rs))
+    where
+    coerceExplain ∷ (a → String) → VariantCase → String
+    coerceExplain = unsafeCoerce
+
+instance explainVariant ∷ (R.RowToList r rl, VariantTags rl, VariantExplains rl) ⇒ Explain (Variant r) where
+  explain :: (Variant r) -> String
+  explain v1 =
+    let
+      VariantRep v = unsafeCoerce v1 ∷ VariantRep VariantCase
+      tags = variantTags (RLProxy ∷ RLProxy rl)
+      explains = variantExplains (RLProxy ∷ RLProxy rl)
+      body = lookup "explain" v.type tags explains v.value
+    in
+      body
+
+-------------------------------------------------------------------------------
 instance explainForeignError :: Explain ForeignError where
   explain :: ForeignError -> String
   explain e

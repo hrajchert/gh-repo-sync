@@ -1,108 +1,124 @@
 module Control.File
   ( readJsonFile
+  , readFile
   , readTextFile
-  , parseConfig -- Should not be here
-  , ReadJsonError
+  , _readFileError
+  , _readFileJsonParseError
+  , ReadJsonFileError
+  , ReadFileError
+  , ReadFileErrorImpl (..)
+  , JsonParseError
+  , JsonParseErrorImpl (..)
   )
-   where
+where
 
+import Prelude
 
-import Control.Async (Async)
+import Control.Async (Async, mapExceptT')
 import Control.Monad.Cont.Trans (ContT(..))
+import Control.Monad.Except (ExceptT(..), except)
 import Data.Bifunctor (lmap)
 import Data.Either (Either)
 import Data.Explain (class Explain, explain)
-import Data.Foldable (foldl)
-import Foreign (ForeignError, renderForeignError)
+import Data.JSON.ParseForeign (class ParseForeign, readJSON)
 import Data.List.Types (NonEmptyList)
-import Data.Newtype (class Newtype, wrap)
-import Data.Traversable (traverse)
+import Data.Variant (SProxy(..), Variant, inj)
+import Effect.Class (liftEffect)
 import Effect.Exception (Error, message)
+import Foreign (ForeignError)
 import Node.Buffer (Buffer, toString)
 import Node.Encoding (Encoding(..))
-import Node.FS.Async (readFile)
-import Prelude (class Show, bind, pure, show, (#), ($), (<#>), (<>), (<$>))
--- import Simple.JSON (class ReadForeign, readJSON)
-import Data.JSON.ParseForeign (class ParseForeign, readJSON)
+import Node.FS.Async as FS
+import Node.Path (FilePath)
+import Type.Data.Boolean (kind Boolean)
+import Type.Row (RowApply)
+infixr 0 type RowApply as ⋃
 
+-------------------------------------------------------------------------------
 
-readFileCont
-  :: String
-  -> Async (Either Error Buffer)
-readFileCont path = ContT $ readFile path
+readFile ::
+  ∀  ρ
+  .  String
+  -> Async (ReadFileError ρ) Buffer
+readFile path = (ExceptT $ ContT $ FS.readFile path) `mapExceptT'` readFileError path
 
-
-readTextFile
-  :: String
-  -> Async (Either Error String)
-readTextFile path = do
-  maybeBuffer <- readFileCont path
-  -- Async eff == ContT (cb -> Eff eff Unit)
-  --        cb :: (Either Error String) -> Eff eff Unit
-  ContT (\cb -> do
-                -- traverse :: (Buffer -> Eff eff String) -> Either Error Buffer -> Eff eff (Either Error String)
-                -- maybeText :: Either Error String
-                maybeText <- traverse (toString UTF8) maybeBuffer
-                cb maybeText
-  )
-
--- TODO: Shouldn't have config stuff in a File utils
-parseConfig :: forall c a. ParseForeign a => Newtype c a => String -> Either (NonEmptyList ForeignError) c
-parseConfig str = wrap <$> maybeObj where
-  maybeObj :: Either (NonEmptyList ForeignError) a
-  maybeObj = readJSON str
-
-
-data ReadJsonError
-  = ReadFileError String String
-  | JsonParseError String (NonEmptyList ForeignError)
-
-instance readJsonErrorShow :: Show ReadJsonError where
-  show (ReadFileError path err) = "(ReadFileError file:" <> show path <> ", err: "<> err <> ")"
-  show (JsonParseError path err) = "(JsonParseError file: " <> show path <> ", err: " <> show (showForeignErrors err) <> ")"
-
-instance explainReadJsonError :: Explain ReadJsonError where
-  explain :: ReadJsonError -> String
-  explain (ReadFileError path err)  = "There was a problem reading the json file " <> show path <> ": " <> err
-  explain (JsonParseError path err) = "There was a problem parsing the json file " <> show path <> ":" <> explain err
-
-
--- TODO: Thinking of putting this into a ForeignHelper
-showForeignErrors :: NonEmptyList ForeignError -> String
-showForeignErrors errors = foldl showError "" errors where
-  showError :: String -> ForeignError -> String
-  showError "" error = renderForeignError error
-  showError accu error = accu <> ", " <> renderForeignError error
+readTextFile ::
+  ∀  ρ
+  .  String
+  -> Async (ReadFileError ρ) String
+readTextFile path = (readFile path) >>= toString' where
+  toString' :: ∀ e. Buffer -> Async e String
+  toString' buff = liftEffect $ toString UTF8 buff
 
 
 
-mapReadFileError :: String -> Error -> ReadJsonError
-mapReadFileError path err = ReadFileError path (message err)
+-- -- TODO: Thinking of putting this into a ForeignHelper
+-- showForeignErrors :: NonEmptyList ForeignError -> String
+-- showForeignErrors errors = foldl showError "" errors where
+--   showError :: String -> ForeignError -> String
+--   showError "" error = renderForeignError error
+--   showError accu error = accu <> ", " <> renderForeignError error
 
-mapJsonParseError :: String -> NonEmptyList ForeignError -> ReadJsonError
-mapJsonParseError path errors = JsonParseError path errors
 
-readJsonFile
-  :: forall t a
-  .  ParseForeign a => Newtype t a
+
+type ReadJsonFileError ρ = (ReadFileError ⋃ JsonParseError ⋃ ρ)
+
+readJsonFile ::
+  ∀  ρ a
+  .  ParseForeign a
   => String
-  -> Async (Either ReadJsonError t)
+  -> Async (ReadJsonFileError ρ) a
 readJsonFile path = do
-  -- maybeString :: Either ReadJsonError String
-  maybeString <-
-              -- Read the file
-                readTextFile path
-                          -- flip map the Async and left map the Either to convert the error type
-                          <#> lmap (mapReadFileError path)
-  -- Insert in Async
-  pure $ do
-    str  <- maybeString
-    -- Parse the string into a json
-    parseConfig str
-      -- Map the Either to convert the error type
-      # lmap (mapJsonParseError path)
+  -- Read the file as a string
+  str <- readTextFile path
 
+  -- Interpret as JSON object `a` and convert the error
+  -- to variant
+  let
+    jsonFile :: ∀ e . Either (Variant (JsonParseError e)) a
+    jsonFile = readJSON str # lmap (jsonParseError path)
 
+  -- Lift it to Async a.k.a ExceptV ContT
+  except jsonFile
 
+-------------------------------------------------------------------------------
 
+-- | Thrown when a readFile was unsuccesful
+type ReadFileError ρ = (readFileError ∷ ReadFileErrorImpl | ρ)
+
+_readFileError :: SProxy "readFileError"
+_readFileError = SProxy
+
+newtype ReadFileErrorImpl
+  = ReadFileErrorImpl
+    { path  :: String
+    , error :: Error
+    }
+
+instance explainReadFileError :: Explain ReadFileErrorImpl where
+  explain (ReadFileErrorImpl {path, error}) = "Could not read file \"" <> path <> "\"" <> message error
+
+readFileError :: ∀ ρ. String -> Error -> Variant (ReadFileError ρ)
+readFileError path error = inj _readFileError (ReadFileErrorImpl { path, error })
+
+---------------------------------------
+
+-- | Thrown when parsing a file as JSON
+type JsonParseError ρ = (readFileJsonParseError ∷ JsonParseErrorImpl | ρ)
+
+-- TODO: unify into either jsonParseError or readFileJsonParseError
+_readFileJsonParseError :: SProxy "readFileJsonParseError"
+_readFileJsonParseError = SProxy
+
+newtype JsonParseErrorImpl
+  = JsonParseErrorImpl
+    { path  :: FilePath
+    , error :: NonEmptyList ForeignError
+    }
+
+instance explainJsonParseError :: Explain JsonParseErrorImpl where
+  explain (JsonParseErrorImpl {path, error}) = "There was a problem parsing the json file " <> show path <> ":" <> explain error
+
+jsonParseError :: ∀ ρ. FilePath -> NonEmptyList ForeignError -> Variant (JsonParseError ρ)
+jsonParseError path error = inj _readFileJsonParseError (JsonParseErrorImpl { path, error })
 
