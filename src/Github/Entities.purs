@@ -8,6 +8,7 @@ import Data.Newtype (class Newtype)
 import Data.Show (class Show)
 
 -- | The name of an organization
+-- TODO: rename to owner to match the documentation
 newtype OrgName = OrgName String
 
 -- For JSON parsing

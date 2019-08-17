@@ -4,6 +4,9 @@ module Github.Api.BranchProtection
   , GetBranchProtectionErrors(..)
   , RequiredPullRequestReviews
   , DismissalRestrictions
+  , updateBranchProtection
+  , UpdateBranchProtectionErrors(..)
+  , UpdateBranchProtectionData
   , RequiredStatusCheck
   , EnforceAdmins
   , RequiredSignatures
@@ -27,9 +30,11 @@ import Control.Async (Async, throwErrorV)
 import Data.Either (Either(..))
 import Data.Explain (class Explain)
 import Data.HTTP.Method (Method(..))
-import Simple.JSON (class ReadForeign, readImpl)
-import Data.Maybe (Maybe)
+import Simple.JSON (class ReadForeign, readImpl, class WriteForeign, writeJSON)
+import Data.Maybe (Maybe (..))
 import Data.Newtype (class Newtype, unwrap)
+import Data.Nullable (Nullable)
+import Affjax.RequestBody as RequestBody
 import Effect.Exception (error)
 import Foreign (F, Foreign)
 import Github.Api.Api (AccessToken, InvalidCredentials, InvalidResponse, RequestError, acceptHeader, api, authHeader, getStatusCode, invalidCredentials, parseResponse, request, requestInternalError)
@@ -90,7 +95,7 @@ getBranchProtection accessToken org repo branch =
       interpret404Response :: ApiError -> Async (GetBranchProtectionErrors e) BranchProtection
       interpret404Response (ApiError r) = case r.message of
           "Branch not protected" -> throwErrorV branchNotProtected
-          "Branch not found" -> throwErrorV $ branchNotFound org repo branch
+          "Not found" -> throwErrorV $ branchNotFound org repo branch
           msg -> throwErrorV $ requestInternalError req $ error $ "invalid error message: " <> show msg
 
 
@@ -185,6 +190,79 @@ type Restrictions =
   , users :: Array User
   , teams :: Array Team
   }
+
+
+-------------------------------------------------------------------------------
+-- UpdateBranchProtection
+
+type UpdateBranchProtectionErrors e =
+  ( RequestError
+  ⋃ InvalidResponse
+  ⋃ InvalidCredentials
+  ⋃ BranchNotFound
+  ⋃ e
+  )
+
+-- Github documentation: https://developer.github.com/v3/repos/branches/#update-branch-protection
+updateBranchProtection
+  :: ∀ e
+  .  AccessToken
+  -> OrgName
+  -> RepoName
+  -> BranchName
+  -> UpdateBranchProtectionData
+  -> Async (UpdateBranchProtectionErrors e) BranchProtection
+updateBranchProtection accessToken owner repo branch updateData =
+  -- Make the request and interpret the response
+  request req >>= transformResponse
+    where
+      endpointUrl :: String
+      endpointUrl = api $ "repos/" <> unwrap owner <> "/" <> unwrap repo <> "/branches/" <> unwrap branch <> "/protection"
+
+      req :: Request String
+      req = defaultRequest  { url = endpointUrl
+                            , headers =
+                              [ authHeader accessToken
+                              -- This header is here to get required_approving_review_count info
+                              -- as stated in a warning here: https://developer.github.com/v3/repos/branches/#update-branch-protection
+                              , acceptHeader "application/vnd.github.luke-cage-preview+json"
+                              -- This header is here to get required_signatures info
+                              -- as stated here: https://developer.github.com/v3/repos/branches/#get-required-signatures-of-protected-branch
+                              , acceptHeader "application/vnd.github.zzzax-preview+json"
+                              ]
+                            , content = Just $ RequestBody.String $ writeJSON updateData
+                            , method = Left PUT
+                            , responseFormat = ResponseFormat.string
+                            }
+
+      transformResponse :: Response String -> Async (UpdateBranchProtectionErrors e) BranchProtection
+      transformResponse res = case getStatusCode res.status of
+        200 -> parseResponse res.body
+        401 -> throwErrorV invalidCredentials
+        404 -> throwErrorV $ branchNotFound owner repo branch
+        n   -> throwErrorV $ requestInternalError req $ error $ "Unexpected status code " <> show n
+
+newtype UpdateBranchProtectionData = UpdateBranchProtectionData
+  { enforce_admins                :: Boolean
+  -- , restrictions                  :: Nullable Unit -- I think I cant use this, should create an AlwaysNull
+  , restrictions                  :: Nullable Int
+  , required_status_checks        ::
+      { strict   :: Boolean
+      , contexts :: Array String
+      }
+  , required_pull_request_reviews ::
+      { dismiss_stale_reviews           :: Boolean
+      , require_code_owner_reviews      :: Boolean
+      , required_approving_review_count :: Int
+      }
+  }
+
+-- cant do this, I should use a newtype called AlwaysNull or something
+-- instance writeForeignUnit :: WriteForeign Unit where
+--   writeImpl = unsafeToForeign
+
+derive instance newTypeUpdateBranchProtectionData :: Newtype UpdateBranchProtectionData _
+derive newtype instance writeForeignUpdateBranchProtectionData :: WriteForeign UpdateBranchProtectionData
 
 -------------------------------------------------------------------------------
 -- ERRORS
