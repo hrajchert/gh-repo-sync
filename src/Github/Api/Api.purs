@@ -134,7 +134,7 @@ data RequestErrorImpl
 
 instance explainRequestError :: Explain RequestErrorImpl where
   explain (IncorrectFormat formatError) = "Incorrect format"
-  explain (InternalError error) = "Internal error: " <> message error
+  explain (InternalError error) = "API internal error: " <> message error
 
 -- | Error constructors for the Variant RequestError
 requestIncorrectFormatError :: ∀ a ρ. Request a -> ResponseFormatError -> Variant (RequestError ⋃ ρ)
@@ -144,7 +144,7 @@ requestInternalError :: ∀ a ρ. Request a -> Error -> Variant (RequestError �
 requestInternalError req error = inj (SProxy :: SProxy "requestError") (InternalError error)
 
 ---------------------------------------
-
+-- TODO: I should probably add this as another case for RequestErrorImpl instead of its own error
 type InvalidResponse ρ = (invalidResponse ∷ InvalidResponseImpl | ρ)
 
 data InvalidResponseImpl
