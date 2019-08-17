@@ -92,7 +92,7 @@ type ErrorMessage ρ = (message ∷ String | ρ)
 
 -- | Error constructor
 errorMessage :: ∀ ρ. String -> Variant (ErrorMessage ρ)
-errorMessage message = inj (SProxy :: SProxy "message") message
+errorMessage message = inj (SProxy :: _"message") message
 
 -----
 
