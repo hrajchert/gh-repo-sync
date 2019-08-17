@@ -18,9 +18,8 @@ import Control.Async (Async, mapExceptT')
 import Control.Monad.Cont.Trans (ContT(..))
 import Control.Monad.Except (ExceptT(..), except)
 import Data.Bifunctor (lmap)
-import Data.Explain (class Explain, explain)
 import Data.Either (Either)
-import Simple.JSON (class ReadForeign, readJSON)
+import Data.Explain (class Explain, explain)
 import Data.List.Types (NonEmptyList)
 import Data.Variant (SProxy(..), Variant, inj)
 import Effect.Class (liftEffect)
@@ -30,12 +29,14 @@ import Node.Buffer (Buffer, toString)
 import Node.Encoding (Encoding(..))
 import Node.FS.Async as FS
 import Node.Path (FilePath)
+import Simple.JSON (class ReadForeign, readJSON)
 import Type.Data.Boolean (kind Boolean)
 import Type.Row (RowApply)
+
 infixr 0 type RowApply as ⋃
 
--------------------------------------------------------------------------------
 
+-------------------------------------------------------------------------------
 readFile ::
   ∀  ρ
   .  String
@@ -122,3 +123,27 @@ instance explainJsonParseError :: Explain JsonParseErrorImpl where
 jsonParseError :: ∀ ρ. FilePath -> NonEmptyList ForeignError -> Variant (JsonParseError ρ)
 jsonParseError path error = inj _readFileJsonParseError (JsonParseErrorImpl { path, error })
 
+writeTextFile ::
+  ∀  ρ
+  .  Encoding
+  -> FilePath
+  -> String
+  -> Async (WriteFileError ρ) Unit
+writeTextFile enc path content = (ExceptT $ ContT $ FS.writeTextFile enc path content) `mapExceptT'` writeFileError path
+
+---------------------------------------
+
+-- | Thrown when a writeFile was unsuccesful
+type WriteFileError ρ = (writeFileError ∷ WriteFileErrorImpl | ρ)
+
+newtype WriteFileErrorImpl
+  = WriteFileErrorImpl
+    { path  :: FilePath
+    , error :: Error
+    }
+
+instance explainWriteFileError :: Explain WriteFileErrorImpl where
+  explain (WriteFileErrorImpl {path, error}) = "Could not write file \"" <> path <> "\"" <> message error
+
+writeFileError :: ∀ ρ. FilePath -> Error -> Variant (WriteFileError ρ)
+writeFileError path error = inj (SProxy :: SProxy "writeFileError") (WriteFileErrorImpl { path, error })
