@@ -36,3 +36,12 @@ derive instance newtypeBranchName :: Newtype BranchName _
 derive newtype instance readForeignBranchName :: ReadForeign BranchName
 -- For Showing
 derive newtype instance showBranchName :: Show BranchName
+
+
+--
+-- TODO: Rename to BranchCanonical
+type BranchObject =
+  { owner       :: OrgName
+  , repository  :: RepoName
+  , branch      :: BranchName
+  }

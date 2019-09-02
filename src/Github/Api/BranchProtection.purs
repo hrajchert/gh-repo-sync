@@ -6,7 +6,9 @@ module Github.Api.BranchProtection
   , DismissalRestrictions
   , updateBranchProtection
   , UpdateBranchProtectionErrors(..)
-  , UpdateBranchProtectionData
+  , UpdateBranchProtectionData(..)
+  , removeBranchProtection
+  , RemoveBranchProtectionErrors(..)
   , RequiredStatusCheck
   , EnforceAdmins
   , RequiredSignatures
@@ -244,13 +246,14 @@ updateBranchProtection accessToken owner repo branch updateData =
 
 newtype UpdateBranchProtectionData = UpdateBranchProtectionData
   { enforce_admins                :: Boolean
+  , required_signatures           :: Boolean -- This property is not documented but it works when used with the zzzax-preview Accept header
   -- , restrictions                  :: Nullable Unit -- I think I cant use this, should create an AlwaysNull
   , restrictions                  :: Nullable Int
-  , required_status_checks        ::
+  , required_status_checks        :: Nullable
       { strict   :: Boolean
       , contexts :: Array String
       }
-  , required_pull_request_reviews ::
+  , required_pull_request_reviews :: Nullable
       { dismiss_stale_reviews           :: Boolean
       , require_code_owner_reviews      :: Boolean
       , required_approving_review_count :: Int
@@ -264,6 +267,59 @@ newtype UpdateBranchProtectionData = UpdateBranchProtectionData
 derive instance newTypeUpdateBranchProtectionData :: Newtype UpdateBranchProtectionData _
 derive newtype instance writeForeignUpdateBranchProtectionData :: WriteForeign UpdateBranchProtectionData
 
+-------------------------------------------------------------------------------
+-- Remove Branch Protection
+
+type RemoveBranchProtectionErrors e =
+  ( RequestError
+  ⋃ InvalidResponse
+  ⋃ InvalidCredentials
+  ⋃ BranchNotFound
+  ⋃ e
+  )
+
+-- Github documentation: https://developer.github.com/v3/repos/branches/#remove-branch-protection
+removeBranchProtection
+  :: ∀ e
+  .  AccessToken
+  -> OrgName
+  -> RepoName
+  -> BranchName
+  -> Async (RemoveBranchProtectionErrors e) Unit
+removeBranchProtection accessToken owner repo branch =
+  -- Make the request and interpret the response
+  request req >>= transformResponse
+    where
+      endpointUrl :: String
+      endpointUrl = api $ "repos/" <> unwrap owner <> "/" <> unwrap repo <> "/branches/" <> unwrap branch <> "/protection"
+
+      req :: Request String
+      req = defaultRequest  { url = endpointUrl
+                            , headers =
+                              [ authHeader accessToken
+                              -- -- This header is here to get required_approving_review_count info
+                              -- -- as stated in a warning here: https://developer.github.com/v3/repos/branches/#update-branch-protection
+                              -- , acceptHeader "application/vnd.github.luke-cage-preview+json"
+                              -- -- This header is here to get required_signatures info
+                              -- -- as stated here: https://developer.github.com/v3/repos/branches/#get-required-signatures-of-protected-branch
+                              -- , acceptHeader "application/vnd.github.zzzax-preview+json"
+                              ]
+                            , method = Left DELETE
+                            , responseFormat = ResponseFormat.string
+                            }
+
+      transformResponse :: Response String -> Async (RemoveBranchProtectionErrors e) Unit
+      transformResponse res = case getStatusCode res.status of
+        204 -> pure unit
+        401 -> throwErrorV invalidCredentials
+        404 -> parseResponse res.body >>= interpret404Response
+        n   -> throwErrorV $ requestInternalError req $ error $ "Unexpected status code " <> show n
+
+      interpret404Response :: ApiError -> Async (RemoveBranchProtectionErrors e) Unit
+      interpret404Response (ApiError r) = case r.message of
+          "Branch not protected" -> pure unit
+          "Not found" -> throwErrorV $ branchNotFound owner repo branch
+          msg -> throwErrorV $ requestInternalError req $ error $ "invalid error message: " <> show msg
 -------------------------------------------------------------------------------
 -- ERRORS
 

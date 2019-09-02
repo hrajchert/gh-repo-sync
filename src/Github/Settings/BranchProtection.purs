@@ -4,7 +4,10 @@ module Github.Settings.BranchProtection
   , PullRequestReviewSettings
   , StatusChecksSettings
   , getBranchProtectionSettings
+  , setBranchProtectionSettings
   , GetBPSettingsErrors
+  , SyncBPSettingsErrors
+  , syncBranchProtectionSettings
   )
 where
 
@@ -18,45 +21,16 @@ import Simple.JSON (class ReadForeign, readImpl)
 import Data.Maybe (Maybe(..))
 import Data.Rules (Rules, boolRule, maybeRules, rule)
 import Foreign (F, Foreign)
-import Github.Api.BranchProtection (BranchNotFound, BranchNotProtectedImpl, BranchProtection(..), RequiredPullRequestReviews, RequiredStatusCheck, getBranchProtection)
-import Github.Entities (BranchName, OrgName, RepoName)
+import Github.Api.BranchProtection (BranchNotFound, BranchNotProtectedImpl, BranchProtection(..), RequiredPullRequestReviews, RequiredStatusCheck, getBranchProtection, UpdateBranchProtectionData(..), updateBranchProtection, removeBranchProtection)
+import Github.Entities (BranchName, OrgName, RepoName, BranchObject)
 import Github.Api.Api (AccessToken, InvalidCredentials, InvalidResponse, RequestError)
 import Type.Row (RowApply)
 import Control.Monad.Trans.Class (lift)
+import Control.Applicative (liftA1)
+import Data.Nullable (Nullable, null, notNull, toNullable)
 
 -- Used to join error types together (unicode option+22C3)
 infixr 0 type RowApply as ⋃
-
--- TODO: probably groupBy into a specific error with a closed set
-type GetBPSettingsErrors e =
-  ( RequestError
-  ⋃ InvalidResponse
-  ⋃ InvalidCredentials
-  ⋃ BranchNotFound
-  ⋃ e
-  )
-
-getBranchProtectionSettings
-  :: ∀ e
-  .  AccessToken
-  -> OrgName
-  -> RepoName
-  -> BranchName
-  -> Async (GetBPSettingsErrors e) BranchProtectionSettings
-getBranchProtectionSettings accessToken org repo branch =
-  -- Make the API call and interpret the response
-  asyncWithError >>= interpretResponse
-    where
-      asyncWithError :: Async (GetBPSettingsErrors e) (Either BranchNotProtectedImpl BranchProtection)
-      asyncWithError = getBranchProtection accessToken org repo branch
-                              -- If it succeeded, treat it as a right value
-                           <#> Right
-                              -- If it failed with "branchNotProtected", treat it as a left
-                            #  handleError {branchNotProtected: (lift <<< pure <<< Left)}
-
-      interpretResponse :: Either BranchNotProtectedImpl BranchProtection -> Async (GetBPSettingsErrors e) BranchProtectionSettings
-      interpretResponse (Left _)   = lift $ pure BranchNotProtected
-      interpretResponse (Right bp) = lift $ pure $ fromBranchProtectionResponse bp
 
 
 -- | Data structure that models the settings in this page
@@ -102,6 +76,42 @@ instance explainBranchSettings :: Explain BranchProtectionSettings where
   explain BranchNotProtected = "The branch is not protected"
   explain (ProtectedBranch settings) = "The branch is protected in the following way: " <> (explain $ protectedBranchRules settings)
 
+-------------------------------------------------------------------------------
+-- TODO: probably groupBy into a specific error with a closed set
+type GetBPSettingsErrors e =
+  ( RequestError
+  ⋃ InvalidResponse
+  ⋃ InvalidCredentials
+  ⋃ BranchNotFound
+  ⋃ e
+  )
+
+getBranchProtectionSettings
+  :: ∀ e
+  .  AccessToken
+  -> OrgName
+  -> RepoName
+  -> BranchName
+  -> Async (GetBPSettingsErrors e) BranchProtectionSettings
+getBranchProtectionSettings accessToken org repo branch =
+  -- Make the API call and interpret the response
+  asyncWithError >>= interpretResponse
+    where
+      asyncWithError :: Async (GetBPSettingsErrors e) (Either BranchNotProtectedImpl BranchProtection)
+      asyncWithError = getBranchProtection accessToken org repo branch
+                              -- If it succeeded, treat it as a right value
+                           <#> Right
+                              -- If it failed with "branchNotProtected", treat it as a left
+                            #  handleError {branchNotProtected: (lift <<< pure <<< Left)}
+
+      interpretResponse :: Either BranchNotProtectedImpl BranchProtection -> Async (GetBPSettingsErrors e) BranchProtectionSettings
+      interpretResponse (Left _)   = lift $ pure $ BranchNotProtected
+      interpretResponse (Right bp) = lift $ pure $ fromBranchProtectionResponse bp
+
+
+
+-------------------------------------------------------------------------------
+
 fromBranchProtectionResponse :: BranchProtection -> BranchProtectionSettings
 fromBranchProtectionResponse
     (BranchProtection
@@ -111,38 +121,109 @@ fromBranchProtectionResponse
       , enforce_admins
       }
     ) = ProtectedBranch
-          { pullRequestReview    : interpretPullRequestReview maybePR
-          , statusChecks         : interpretStatusCheck maybeSC
+          { pullRequestReview    : liftA1 interpretPullRequestReview $ maybePR
+          , statusChecks         : liftA1 interpretStatusCheck $ maybeSC
           , requireSignedCommits : required_signatures.enabled
           , includeAdministrators: enforce_admins.enabled
           }
 
 
-interpretPullRequestReview :: Maybe RequiredPullRequestReviews -> Maybe PullRequestReviewSettings
-interpretPullRequestReview Nothing = Nothing
+interpretPullRequestReview :: RequiredPullRequestReviews -> PullRequestReviewSettings
 interpretPullRequestReview
-    (Just
-      { required_approving_review_count: requiredApprovingReviews
-      , dismiss_stale_reviews: dismissStale
-      , require_code_owner_reviews: requireReviewFromOwner
-      }
-    ) = Just
-          { requiredApprovingReviews
-          , dismissStale
-          , requireReviewFromOwner
+  { required_approving_review_count: requiredApprovingReviews
+  , dismiss_stale_reviews: dismissStale
+  , require_code_owner_reviews: requireReviewFromOwner
+  } =
+    { requiredApprovingReviews
+    , dismissStale
+    , requireReviewFromOwner
+    }
+
+interpretStatusCheck :: RequiredStatusCheck -> StatusChecksSettings
+interpretStatusCheck
+  { strict: requireUpToDate
+  , contexts: checks
+  } =
+    { requireUpToDate
+    , checks
+    }
+
+-------------------------------------------------------------------------------
+
+type SetBPSettingsErrors e =
+  ( RequestError
+  ⋃ InvalidResponse
+  ⋃ InvalidCredentials
+  ⋃ BranchNotFound
+  ⋃ e
+  )
+
+setBranchProtectionSettings
+  :: ∀ e
+  .  AccessToken
+  -> OrgName
+  -> RepoName
+  -> BranchName
+  -> BranchProtectionSettings
+  -> Async (SetBPSettingsErrors e) Unit
+  -- TODO: Maybe return the same settings to improve composability?
+  -- -> Async (SetBPSettingsErrors e) BranchProtectionSettings
+setBranchProtectionSettings accessToken owner repo branch settings = case settings of
+  BranchNotProtected               -> removeBranchProtection accessToken owner repo branch
+  (ProtectedBranch branchSettings) ->
+    do
+      _ <- updateBranchProtection accessToken owner repo branch (toUpdateBranchProtectionData branchSettings)
+      pure unit
+
+
+
+toUpdateBranchProtectionData :: ProtectedBranchSettings -> UpdateBranchProtectionData
+toUpdateBranchProtectionData
+  { pullRequestReview         -- :: Maybe PullRequestReviewSettings
+  , statusChecks              -- :: Maybe StatusChecksSettings
+  , requireSignedCommits      -- :: Boolean
+  , includeAdministrators     -- :: Boolean
+  } = UpdateBranchProtectionData
+        { enforce_admins                  : includeAdministrators
+        , required_signatures             : requireSignedCommits
+        , restrictions                    : null
+        , required_status_checks          : toNullable (convertStatusChecks <$> statusChecks)
+        , required_pull_request_reviews   : toNullable (convertPullRequestReviews <$> pullRequestReview)
+        }
+      where
+        convertPullRequestReviews settings =
+          { dismiss_stale_reviews: settings.dismissStale
+          , require_code_owner_reviews: settings.requireReviewFromOwner
+          , required_approving_review_count: settings.requiredApprovingReviews
           }
 
-interpretStatusCheck :: Maybe RequiredStatusCheck -> Maybe StatusChecksSettings
-interpretStatusCheck Nothing = Nothing
-interpretStatusCheck
-  (Just
-    { strict: requireUpToDate
-    , contexts: checks
-    }
-  ) = Just
-        { requireUpToDate
-        , checks
-        }
+        convertStatusChecks settings =
+          { strict: settings.requireUpToDate
+          , contexts: settings.checks
+          }
+
+-------------------------------------------------------------------------------
+-- TODO: Probably move to it's own Sync module
+type SyncBPSettingsErrors e =
+  ( RequestError
+  ⋃ InvalidResponse
+  ⋃ InvalidCredentials
+  ⋃ BranchNotFound
+  ⋃ e
+  )
+
+syncBranchProtectionSettings
+  :: ∀ e
+  .  AccessToken
+  -> BranchObject
+  -> BranchObject
+  -> Async (SetBPSettingsErrors e) BranchProtectionSettings
+syncBranchProtectionSettings accessToken src dst =
+  do
+    settings <- getBranchProtectionSettings accessToken src.owner src.repository src.branch
+    setBranchProtectionSettings accessToken dst.owner dst.repository dst.branch settings
+    pure settings
+
 
 -------------------------------------------------------------------------------
 -- RULES
