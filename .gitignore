@@ -12,3 +12,6 @@ poc-config.json
 test.prs
 mvp-config.json
 .spago
+.cache
+dist
+web-prod
