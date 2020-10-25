@@ -15,10 +15,10 @@
   },
   "scripts": {
     "start": "node bin/gh-repo-sync",
-    "start-dev": "pulp -w run",
-    "tdd": "pulp -w test",
-    "build": "pulp build -- -g sourcemaps",
-    "test": "pulp test"
+    "start-dev": "spago run -w",
+    "tdd": "spago test -w",
+    "build": "spago build",
+    "test": "spago test"
   },
   "keywords": [
     "pursescript",
