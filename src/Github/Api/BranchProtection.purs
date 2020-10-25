@@ -98,7 +98,8 @@ getBranchProtection accessToken org repo branch =
       interpret404Response (ApiError r) = case r.message of
           "Branch not protected" -> throwErrorV branchNotProtected
           "Not Found" -> throwErrorV $ branchNotFound org repo branch
-          msg -> throwErrorV $ requestInternalError req $ error $ "Error interpreting the 404 response for getting a branch protection setting. Either 'Branch not protected' or 'Not Found' were expected, but " <> show msg <> " was found."
+          "Branch not found" -> throwErrorV $ branchNotFound org repo branch
+          msg -> throwErrorV $ requestInternalError req $ error $ "Error interpreting the 404 response for getting a branch protection setting. Either 'Branch not protected', 'Not Found' or 'Branch not found' were expected, but " <> show msg <> " was found."
 
 
 -- TODO: Rename to BranchProtectionResponse
