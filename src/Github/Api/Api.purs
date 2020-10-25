@@ -25,7 +25,6 @@ import Prelude
 import Affjax (Request, Response)
 import Affjax as Affjax
 import Affjax.RequestHeader (RequestHeader(..))
-import Affjax.ResponseFormat (ResponseFormatError)
 import Affjax.StatusCode (StatusCode(..))
 import Control.Async (Async, mapExceptT', throwErrorV)
 import Control.Monad.Cont (ContT(ContT))
@@ -59,26 +58,24 @@ request req = asyncRequestV >>= interpretResponse
       --     or there is a problem with the DNS, etc.
       --   * The second error is explicit in the response, and it happens when the response can't
       --     be formated acording to the type `a`, described in the Request
+      --     https://pursuit.purescript.org/packages/purescript-affjax/11.0.0/docs/Affjax#t:Error
 
       -- Asyncronous computation of our Response
-      aff :: Aff (Response (Either ResponseFormatError a))
+      aff :: Aff (Either Affjax.Error (Response a))
       aff = Affjax.request req
 
       -- Convert the aff computation into a Monad Transformer closer to Async
-      asyncRequestT :: ExceptT Error (ContT Unit Effect) (Response (Either ResponseFormatError a))
+      asyncRequestT :: ExceptT Error (ContT Unit Effect) (Either Affjax.Error (Response a))
       asyncRequestT = ExceptT $ ContT $ flip runAff_ $ aff
 
       -- Convert the computation to Async by interpreting (Aff Error) into the (Variant RequestError)
-      asyncRequestV :: Async (RequestError ⋃ e) (Response (Either ResponseFormatError a))
+      asyncRequestV :: Async (RequestError ⋃ e) (Either Affjax.Error (Response a))
       asyncRequestV = asyncRequestT `mapExceptT'` requestInternalError req
 
-      -- Once we have the response, interpret the (Either ResponseFormatError) as a (Variant RequestError)
-      interpretResponse :: Response (Either ResponseFormatError a) -> Async (RequestError ⋃ e) (Response a)
-      interpretResponse res =
-        case res.body of
-          Left formatError -> throwErrorV $ requestIncorrectFormatError req formatError
-                           -- If the value is correct, remove the Either from the Response
-          Right a          -> lift $ pure $ res {body = a}
+      -- Once we have the response, interpret the (Either Error) as a (Variant RequestError)
+      interpretResponse :: Either Affjax.Error (Response a) -> Async (RequestError ⋃ e) (Response a)
+      interpretResponse (Left formatError) = throwErrorV $ requestIncorrectFormatError req formatError
+      interpretResponse (Right res) = lift $ pure $ res
 
 -------------------------------------------------------------------------------
 -- HEADERS
@@ -128,7 +125,7 @@ type RequestError ρ = (requestError ∷ RequestErrorImpl | ρ)
 -- There are two reasons why the request can fail. An internal error normally represents no internet, DNS
 -- problem, etc. IncorrectFormat is when parsing the response, if it can't be formated as the request intended
 data RequestErrorImpl
-  = IncorrectFormat ResponseFormatError
+  = IncorrectFormat Affjax.Error
   | InternalError Error
 
 
@@ -137,7 +134,7 @@ instance explainRequestError :: Explain RequestErrorImpl where
   explain (InternalError error) = "API internal error: " <> message error
 
 -- | Error constructors for the Variant RequestError
-requestIncorrectFormatError :: ∀ a ρ. Request a -> ResponseFormatError -> Variant (RequestError ⋃ ρ)
+requestIncorrectFormatError :: ∀ a ρ. Request a -> Affjax.Error -> Variant (RequestError ⋃ ρ)
 requestIncorrectFormatError req formatError = inj (SProxy :: SProxy "requestError") (IncorrectFormat formatError)
 
 requestInternalError :: ∀ a ρ. Request a -> Error -> Variant (RequestError ⋃ ρ)

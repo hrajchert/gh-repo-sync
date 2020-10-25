@@ -14,7 +14,7 @@ import Data.List.Types (NonEmptyList)
 import Data.Variant (Variant)
 import Data.Variant.Internal (class VariantTags, RLProxy(..), VariantCase, VariantRep(..), lookup, variantTags)
 import Prelude (show, (<>))
-import Type.Row as R
+import Prim.RowList as R
 import Unsafe.Coerce (unsafeCoerce)
 
 class Explain a where

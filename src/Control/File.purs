@@ -30,7 +30,6 @@ import Node.Encoding (Encoding(..))
 import Node.FS.Async as FS
 import Node.Path (FilePath)
 import Simple.JSON (class ReadForeign, readJSON)
-import Type.Data.Boolean (kind Boolean)
 import Type.Row (RowApply)
 
 infixr 0 type RowApply as ⋃

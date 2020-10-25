@@ -97,8 +97,8 @@ getBranchProtection accessToken org repo branch =
       interpret404Response :: ApiError -> Async (GetBranchProtectionErrors e) BranchProtection
       interpret404Response (ApiError r) = case r.message of
           "Branch not protected" -> throwErrorV branchNotProtected
-          "Not found" -> throwErrorV $ branchNotFound org repo branch
-          msg -> throwErrorV $ requestInternalError req $ error $ "invalid error message: " <> show msg
+          "Not Found" -> throwErrorV $ branchNotFound org repo branch
+          msg -> throwErrorV $ requestInternalError req $ error $ "Error interpreting the 404 response for getting a branch protection setting. Either 'Branch not protected' or 'Not Found' were expected, but " <> show msg <> " was found."
 
 
 -- TODO: Rename to BranchProtectionResponse
@@ -319,7 +319,7 @@ removeBranchProtection accessToken owner repo branch =
       interpret404Response (ApiError r) = case r.message of
           "Branch not protected" -> pure unit
           "Not found" -> throwErrorV $ branchNotFound owner repo branch
-          msg -> throwErrorV $ requestInternalError req $ error $ "invalid error message: " <> show msg
+          msg -> throwErrorV $ requestInternalError req $ error $ "Error interpreting the 404 response for removing a branch protection. Either 'Branch not protected' or 'Not found' were expected, but " <> show msg <> " was found."
 -------------------------------------------------------------------------------
 -- ERRORS
 
