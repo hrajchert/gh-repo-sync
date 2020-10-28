@@ -7,11 +7,9 @@ module Control.Async
   , Exception
   , errorMessage
   , ErrorMessage
-  )
-where
+  ) where
 
 import Prelude
-
 import Control.Monad.Cont.Trans (ContT, runContT)
 import Control.Monad.Error.Class (class MonadThrow)
 import Control.Monad.Except (ExceptT, runExceptT)
@@ -44,7 +42,8 @@ import Type.Row (RowApply)
 -- | ```purescript
 -- | type ApiError ρ = (RequestError ⋃ InvalidCredentials ⋃ InvalidResponse ⋃ ρ)
 -- | ```
-type Async ρ a =  ExceptV ρ (ContT Unit Effect) a
+type Async ρ a
+  = ExceptV ρ (ContT Unit Effect) a
 
 -- | Used to join error types together, for example (ErrorMessage ⋃ Exception ⋃ ρ)
 -- |
@@ -54,52 +53,51 @@ infixr 0 type RowApply as ⋃
 -- | Empty Set
 -- |
 -- | **unicode** `option+00D8`
-type Ø = ()
--------------------------------------------------------------------------------
+type Ø
+  = ()
 
+-------------------------------------------------------------------------------
 -- | Runs an asynchronous computation
 runAsync :: ∀ a e. Async e a -> (Either (Variant e) a -> Effect Unit) -> Effect Unit
-runAsync =  runContT <<< runExceptT
+runAsync = runContT <<< runExceptT
 
 -----
-
 -- | Throws an error, restricting the error type to a Variant
 throwErrorV :: ∀ a m e. MonadThrow (Variant e) m => Variant e -> m a
 throwErrorV = ExceptT.throwError
 
 -----
-
 -- | Maps the error of a Monad Stack that includes the ExceptT Transformer.
 -- | It's a helper around mapExceptT, to only concentrate about mapping the error.
 -- | I'm not sure if this function should reside here.
-mapExceptT' :: ∀ e e' a m
-  . Functor m
-  =>  ExceptT e m a
-  -> (e -> e')
-  -> ExceptT e' m a
-mapExceptT' stack fe = ExceptT.mapExceptT map' stack where
+mapExceptT' ::
+  ∀ e e' a m.
+  Functor m =>
+  ExceptT e m a ->
+  (e -> e') ->
+  ExceptT e' m a
+mapExceptT' stack fe = ExceptT.mapExceptT map' stack
+  where
   map' :: (m (Either e a) -> m (Either e' a))
   map' m = lmap fe <$> m
 
-
 -------------------------------------------------------------------------------
 -- Common Errors
-
 -- | An ErrorMessage is a simple string error.
 -- | It should be used whenever you want to fail with a simple reason explaining
 -- | the failure.
-type ErrorMessage ρ = (message ∷ String | ρ)
+type ErrorMessage ρ
+  = ( message ∷ String | ρ )
 
 -- | Error constructor
 errorMessage :: ∀ ρ. String -> Variant (ErrorMessage ρ)
-errorMessage message = inj (SProxy :: _"message") message
+errorMessage message = inj (SProxy :: _ "message") message
 
 -----
-
 -- | An Exception is a JavaScript Error object, which you can then message or see the Runtime stack
-type Exception ρ = (exception ∷ Error | ρ)
+type Exception ρ
+  = ( exception ∷ Error | ρ )
 
 -- | Error constructor
 exception :: ∀ ρ. Error -> Variant (Exception ρ)
 exception e = inj (SProxy :: SProxy "exception") e
-

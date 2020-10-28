@@ -37,6 +37,7 @@
   },
   "homepage": "https://github.com/hrajchert/gh-repo-sync",
   "devDependencies": {
-    "purescript": "^0.13.8"
+    "purescript": "^0.13.8",
+    "purty": "^6.2.0"
   }
 }

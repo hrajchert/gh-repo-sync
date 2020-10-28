@@ -17,11 +17,9 @@ module Github.Api.Api
   , InvalidCredentials
   , InvalidCredentialsImpl
   , invalidCredentials
-  )
-   where
+  ) where
 
 import Prelude
-
 import Affjax (Request, Response)
 import Affjax as Affjax
 import Affjax.RequestHeader (RequestHeader(..))
@@ -46,45 +44,45 @@ import Type.Row (RowApply)
 -- Used to join error types together (unicode option+22C3)
 infixr 0 type RowApply as ⋃
 
-
-request
-  :: ∀ a e
-  . Request a
-  -> Async (RequestError ⋃ e) (Response a)
+request ::
+  ∀ a e.
+  Request a ->
+  Async (RequestError ⋃ e) (Response a)
 request req = asyncRequestV >>= interpretResponse
-    where
-      -- Note that Affjax has two places for error handling:
-      --   * The first is the implicit one from Aff. This error happens when there is no internet,
-      --     or there is a problem with the DNS, etc.
-      --   * The second error is explicit in the response, and it happens when the response can't
-      --     be formated acording to the type `a`, described in the Request
-      --     https://pursuit.purescript.org/packages/purescript-affjax/11.0.0/docs/Affjax#t:Error
+  where
+  -- Note that Affjax has two places for error handling:
+  --   * The first is the implicit one from Aff. This error happens when there is no internet,
+  --     or there is a problem with the DNS, etc.
+  --   * The second error is explicit in the response, and it happens when the response can't
+  --     be formated acording to the type `a`, described in the Request
+  --     https://pursuit.purescript.org/packages/purescript-affjax/11.0.0/docs/Affjax#t:Error
+  -- Asyncronous computation of our Response
+  aff :: Aff (Either Affjax.Error (Response a))
+  aff = Affjax.request req
 
-      -- Asyncronous computation of our Response
-      aff :: Aff (Either Affjax.Error (Response a))
-      aff = Affjax.request req
+  -- Convert the aff computation into a Monad Transformer closer to Async
+  asyncRequestT :: ExceptT Error (ContT Unit Effect) (Either Affjax.Error (Response a))
+  asyncRequestT = ExceptT $ ContT $ flip runAff_ $ aff
 
-      -- Convert the aff computation into a Monad Transformer closer to Async
-      asyncRequestT :: ExceptT Error (ContT Unit Effect) (Either Affjax.Error (Response a))
-      asyncRequestT = ExceptT $ ContT $ flip runAff_ $ aff
+  -- Convert the computation to Async by interpreting (Aff Error) into the (Variant RequestError)
+  asyncRequestV :: Async (RequestError ⋃ e) (Either Affjax.Error (Response a))
+  asyncRequestV = asyncRequestT `mapExceptT'` requestInternalError req
 
-      -- Convert the computation to Async by interpreting (Aff Error) into the (Variant RequestError)
-      asyncRequestV :: Async (RequestError ⋃ e) (Either Affjax.Error (Response a))
-      asyncRequestV = asyncRequestT `mapExceptT'` requestInternalError req
+  -- Once we have the response, interpret the (Either Error) as a (Variant RequestError)
+  interpretResponse :: Either Affjax.Error (Response a) -> Async (RequestError ⋃ e) (Response a)
+  interpretResponse (Left formatError) = throwErrorV $ requestIncorrectFormatError req formatError
 
-      -- Once we have the response, interpret the (Either Error) as a (Variant RequestError)
-      interpretResponse :: Either Affjax.Error (Response a) -> Async (RequestError ⋃ e) (Response a)
-      interpretResponse (Left formatError) = throwErrorV $ requestIncorrectFormatError req formatError
-      interpretResponse (Right res) = lift $ pure $ res
+  interpretResponse (Right res) = lift $ pure $ res
 
 -------------------------------------------------------------------------------
 -- HEADERS
-
 -- Some methods are restricted and needs an  Access Token
-newtype AccessToken = AccessToken String
+newtype AccessToken
+  = AccessToken String
 
 -- Instances for parsing with SimpleJSON
 derive instance newtypeAccessToken :: Newtype AccessToken _
+
 derive newtype instance readForeignAccessToken :: ReadForeign AccessToken
 
 instance showAccessToken :: Show AccessToken where
@@ -96,16 +94,16 @@ authHeader (AccessToken token) = RequestHeader "Authorization" ("Bearer " <> tok
 acceptHeader :: String -> RequestHeader
 acceptHeader negotiation = RequestHeader "Accept" negotiation
 
-addAccessTokenIfPresent :: Maybe AccessToken -> Array RequestHeader  -> Array RequestHeader
-addAccessTokenIfPresent Nothing            headers = headers
-addAccessTokenIfPresent (Just accessToken) headers = headers <> [authHeader accessToken]
+addAccessTokenIfPresent :: Maybe AccessToken -> Array RequestHeader -> Array RequestHeader
+addAccessTokenIfPresent Nothing headers = headers
+
+addAccessTokenIfPresent (Just accessToken) headers = headers <> [ authHeader accessToken ]
 
 getStatusCode :: StatusCode -> Int
 getStatusCode (StatusCode n) = n
 
 -------------------------------------------------------------------------------
 -- URLS
-
 api :: String -> String
 api url = "https://api.github.com/" <> url
 
@@ -114,20 +112,17 @@ site url = "https://www.github.com/" <> url
 
 -- TODO: Try to add conditional request
 -- https://developer.github.com/v3/#conditional-requests
-
-
 -------------------------------------------------------------------------------
 -- ERRORS
-
 -- | Error thrown when a affjax request cant be resolved
-type RequestError ρ = (requestError ∷ RequestErrorImpl | ρ)
+type RequestError ρ
+  = ( requestError ∷ RequestErrorImpl | ρ )
 
 -- There are two reasons why the request can fail. An internal error normally represents no internet, DNS
 -- problem, etc. IncorrectFormat is when parsing the response, if it can't be formated as the request intended
 data RequestErrorImpl
   = IncorrectFormat Affjax.Error
   | InternalError Error
-
 
 instance explainRequestError :: Explain RequestErrorImpl where
   explain (IncorrectFormat formatError) = "Incorrect format"
@@ -142,36 +137,36 @@ requestInternalError req error = inj (SProxy :: SProxy "requestError") (Internal
 
 ---------------------------------------
 -- TODO: I should probably add this as another case for RequestErrorImpl instead of its own error
-type InvalidResponse ρ = (invalidResponse ∷ InvalidResponseImpl | ρ)
+type InvalidResponse ρ
+  = ( invalidResponse ∷ InvalidResponseImpl | ρ )
 
 data InvalidResponseImpl
   = InvalidResponseImpl MultipleErrors
 
 instance explainInvalidResponse :: Explain InvalidResponseImpl where
-  explain (InvalidResponseImpl err)  = "Github response doesn't match what we expected: " <> explain err
+  explain (InvalidResponseImpl err) = "Github response doesn't match what we expected: " <> explain err
 
 -- | Error constructors for the Variant InvalidResponse
 invalidResponse :: ∀ ρ. MultipleErrors -> Variant (InvalidResponse ⋃ ρ)
 invalidResponse err = inj (SProxy :: SProxy "invalidResponse") (InvalidResponseImpl err)
 
 parseResponse :: ∀ a ρ. ReadForeign a => String -> Async (InvalidResponse ρ) a
-parseResponse str = except parsedJSON where
-    -- Parse the JSON and convert the error
-    parsedJSON = readJSON str # lmap invalidResponse
+parseResponse str = except parsedJSON
+  where
+  -- Parse the JSON and convert the error
+  parsedJSON = readJSON str # lmap invalidResponse
 
 ---------------------------------------
-
 -- | This error is usually tied to error 401
-type InvalidCredentials ρ = (invalidCredentials ∷ InvalidCredentialsImpl | ρ)
+type InvalidCredentials ρ
+  = ( invalidCredentials ∷ InvalidCredentialsImpl | ρ )
 
-data InvalidCredentialsImpl = InvalidCredentialsImpl
+data InvalidCredentialsImpl
+  = InvalidCredentialsImpl
 
 instance explainInvalidCredentials :: Explain InvalidCredentialsImpl where
-  explain InvalidCredentialsImpl  = "The access token you provided is invalid or cancelled"
+  explain InvalidCredentialsImpl = "The access token you provided is invalid or cancelled"
 
 -- | Error constructors for the Variant InvalidCredentials
 invalidCredentials :: ∀ ρ. Variant (InvalidCredentials ⋃ ρ)
 invalidCredentials = inj (SProxy :: SProxy "invalidCredentials") InvalidCredentialsImpl
-
-
-

@@ -3,8 +3,7 @@ module Config
   , groupByReadConfigError
   , ReadConfigErrorImpl
   , readConfig
-  )
-  where
+  ) where
 
 import Prelude
 import Control.Async (Async, mapExceptT')
@@ -21,9 +20,11 @@ import Type.Row as R
 infixr 0 type R.RowApply as ⋃
 
 -- Empty Set (unicode option+00D8)
-type Ø = ()
+type Ø
+  = ()
 
-type ReadConfigError ρ = (readConfigError ∷ ReadConfigErrorImpl ρ | ρ)
+type ReadConfigError ρ
+  = ( readConfigError ∷ ReadConfigErrorImpl ρ | ρ )
 
 _readConfigError :: SProxy "readConfigError"
 _readConfigError = SProxy
@@ -37,23 +38,25 @@ newtype ReadConfigErrorImpl e
 derive instance newtypeReadConfigErrorImpl :: Newtype (ReadConfigErrorImpl e) _
 
 instance explainReadConfigError :: Explain (ReadConfigErrorImpl e) where
-  explain err
-      = default "Unknown problem"
+  explain err =
+    default "Unknown problem"
       # onMatch
-        { readFileError: \(ReadFileErrorImpl {error})
-            -> "Can't read the config file: " <> message error
-        , readFileJsonParseError: \(JsonParseErrorImpl {path, error})
-            -> "There was a problem parsing the config file '" <> path <>"':"<> explain error
-        }
+          { readFileError:
+              \(ReadFileErrorImpl { error }) ->
+                "Can't read the config file: " <> message error
+          , readFileJsonParseError:
+              \(JsonParseErrorImpl { path, error }) ->
+                "There was a problem parsing the config file '" <> path <> "':" <> explain error
+          }
       $ unwrap err
 
-
-
 groupByReadConfigError :: ∀ e. Variant (ReadJsonFileError ⋃ ReadConfigError ⋃ e) -> Variant (ReadConfigError ⋃ e)
-groupByReadConfigError = onMatch
-  { readFileError: readConfigError <<< inj _readFileError
-  , readFileJsonParseError: readConfigError <<< inj _readFileJsonParseError
-  } identity
+groupByReadConfigError =
+  onMatch
+    { readFileError: readConfigError <<< inj _readFileError
+    , readFileJsonParseError: readConfigError <<< inj _readFileJsonParseError
+    }
+    identity
 
 readConfig :: ∀ e c. ReadForeign c => String -> Async (ReadConfigError e) c
 readConfig path = File.readJsonFile path `mapExceptT'` groupByReadConfigError
