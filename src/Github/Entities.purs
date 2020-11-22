@@ -1,9 +1,8 @@
-module Github.Entities --  (
- --  )
- where
+module Github.Entities where
 
+import Prelude
 import Simple.JSON (class ReadForeign)
-import Data.Newtype (class Newtype)
+import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Show (class Show)
 
 -- | The name of an organization
@@ -44,9 +43,20 @@ derive newtype instance readForeignBranchName :: ReadForeign BranchName
 derive newtype instance showBranchName :: Show BranchName
 
 --
--- TODO: Rename to BranchCanonical
+-- TODO: Rename to CanonicalBranch
+-- TODO: probably make newtype
 type BranchObject
   = { owner :: OrgName
     , repository :: RepoName
     , branch :: BranchName
     }
+
+branchURI :: BranchObject -> String
+branchURI { owner, repository, branch } = "@" <> unwrap owner <> "/" <> unwrap repository <> "#" <> unwrap branch
+
+canonicalBranch :: String -> String -> String -> BranchObject
+canonicalBranch owner repository branch =
+  { owner: wrap owner
+  , repository: wrap repository
+  , branch: wrap branch
+  }
