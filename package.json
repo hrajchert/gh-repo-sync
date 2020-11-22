@@ -18,7 +18,9 @@
     "start-dev": "spago run -w",
     "tdd": "spago test -w",
     "build": "spago build",
-    "test": "spago test"
+    "test": "spago test",
+    "serve": "parcel web/index.html --open",
+    "build-prod": "mkdir -p web-prod && cp web/index.html web-prod/ && rm -rf dist && spago bundle-app --main Web.Main --to web-prod/index.js && parcel build web-prod/index.html"
   },
   "keywords": [
     "pursescript",
@@ -37,7 +39,9 @@
   },
   "homepage": "https://github.com/hrajchert/gh-repo-sync",
   "devDependencies": {
+    "parcel": "^1.12.4",
     "purescript": "^0.13.8",
-    "purty": "^6.2.0"
+    "purty": "^6.2.0",
+    "spago": "^0.17.0"
   }
 }

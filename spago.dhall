@@ -8,6 +8,7 @@ You can edit this file as you like.
   , "checked-exceptions"
   , "console"
   , "effect"
+  , "halogen"
   , "node-fs"
   , "prelude"
   , "psci-support"
